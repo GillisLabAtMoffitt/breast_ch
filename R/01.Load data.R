@@ -57,17 +57,30 @@ breast_dna <-
 write_rds(breast_dna, "breast_dna.rds")
 
 # Chemot
-Chemot %>% 
-  mutate(chemotherapy_start_date1 = as.Date(chemotherapy_start_date))
-  mutate(chemotherapy_start_date1 = as.POSIXct(chemotherapy_start_date), tryFormats = c("%d/%m/%y", "%d/%m/%Y %H:%M:%OS"))
+a <- Chemot %>% 
+  mutate(across(where(is.character), ~str_to_lower(.))) %>% 
+  mutate(chemotherapy_start_date = case_when(
+    str_detect(chemotherapy_start_date, "12:00:00 AM")    ~ NA_character_,
+    TRUE                                                  ~ chemotherapy_start_date
+  ), 
+  chemotherapy_start_date = as.Date(as.numeric(chemotherapy_start_date), 
+                                                origin = "1899-12-30")
+  ) %>% 
+  mutate(chemotherapy_end_date = case_when(
+    str_detect(chemotherapy_end_date, "12:00:00 AM")    ~ NA_character_,
+    TRUE                                                  ~ chemotherapy_end_date
+  ), 
+  chemotherapy_end_date = as.Date(as.numeric(chemotherapy_end_date), 
+                                     origin = "1899-12-30")
+  ) %>% 
+  group_by(deidentified_patient_id, chemotherapy_start_date) %>%
+  summarise_at(vars(chemotherapy_drug, chemotherapy_end_date), str_c, collapse = "; ")
+  # summarise_at(vars(chemotherapy_drug, chemotherapy_end_date), c(paste), collapse = "; ") %>% 
+  # separate(chemotherapy_end_date, "chemotherapy_end_date", sep = "; ", extra = "drop")
+  
 
 
-
-
-
-
-
-
+library(lubridate)
 
 
 
