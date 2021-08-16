@@ -17,7 +17,7 @@ editor_options:
 <style type="text/css">
 .figure {
    margin-top: 10px;
-   margin-bottom: 100px;
+   margin-bottom: 25px;
 }
 
 table {
@@ -41,17 +41,139 @@ options(gtsummary.as_gt.addl_cmds = "gt::tab_options(table.font.size = 14, data_
 ```{r library}
 library(tidyverse)
 library(data.table)
+library(VennDiagram)
+library(gtsummary)
 ```
 
 ```{r}
 breast_dna <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/breast_dna.rds")
+germline_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/germline_data.rds")
+Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Global_data.rds")
 ```
 
 # How many unique patient do we have in the data?
 
-We have `r length(unique(breast_dna$deidentified_patient_id))` unique breast cancer patients with a Blood sample.
+```{r, out.width='100%'}
+venn.diagram(
+  x = list(Global_data$deidentified_patient_id, germline_data$deidentified_patient_id),
+  category.names = c("Clinical data" , "Germline data"),
+  filename = 'Patients with germline data.png',
+  output=TRUE,
+  
+  # Output features
+  imagetype="png" ,
+  height = 1000 , 
+  width = 1000 , 
+  resolution = 300,
+  compression = "lzw",
+  
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = c(viridis::plasma(2)),# clin, germ, demo
+  margin = 0.2,
+  
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.pos = c(90, 0),
+  cat.dist = c(0.15, -0.09)
+  # ext.percent = 2
+  #ext.percent = 5
+)
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Patients with germline data.png')
+```
 
-# How many had treatment?
+We have `r length(unique(germline_data$deidentified_patient_id))` unique breast cancer patients with a Blood sample.
+
+```{r}
+germline_data %>% 
+  select("race_derived", "ethnicity_derived") %>% 
+  tbl_summary()
+```
+
+
+
+# How many patients with blood available had treatments?
+
+```{r, out.width='100%'}
+venn.diagram(
+  x = list(chem = c(germline_data$deidentified_patient_id),
+           hor = c(germline_data[ germline_data$had_treatment == "Yes", ]$deidentified_patient_id)
+           ),
+  category.names = c("Blood available", "Received \nTreatments"
+                     ),
+  filename = 'Treatment in germline data.png',
+  output=TRUE,
+
+  # Output features
+  imagetype="png" ,
+  height = 1000 ,
+  width = 1000 ,
+  resolution = 300,
+  compression = "lzw",
+
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = c(viridis::plasma(2) ),
+  margin = 0.2,
+
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.pos = c(90, 0),
+  cat.dist = c(0.15, -0.09)
+  # ext.percent = 2
+  #ext.percent = 5
+)
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment in germline data.png')
+
+venn.diagram(
+  x = list(chem = c(germline_data[ !is.na(germline_data$chemotherapy_start_date_1), ]$deidentified_patient_id),
+           hor = c(germline_data[ !is.na(germline_data$hormone_therapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(germline_data[ !is.na(germline_data$immunotherapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(germline_data[ !is.na(germline_data$radiation_start_date_1), ]$deidentified_patient_id)
+           ),
+  category.names = c("Chemotherapy", "Hormonetherapy", "Immnunotherapy", "Radiotherapy"
+                     ),
+  filename = 'Treatments in germline data.png',
+  output=TRUE,
+
+  # Output features
+  imagetype="png" ,
+  height = 1000 ,
+  width = 1000 ,
+  resolution = 300,
+  compression = "lzw",
+
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = c(viridis::cividis(4) ),
+  margin = 0.2,
+
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.pos = c(-40, 40, -50, 50),
+  cat.dist = c(0.3, 0.3, 0.2, 0.2),
+  # ext.percent = 2
+  #ext.percent = 5
+)
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in germline data.png')
+```
+
+# Patients who had blood before treatments
+
+```{r}
+germline_data %>% 
+  select(blood_bf_chemo, blood_bf_horm, blood_bf_immu, blood_bf_rad, blood_bf_treatment) %>% 
+  tbl_summary()
+```
 
 
 
