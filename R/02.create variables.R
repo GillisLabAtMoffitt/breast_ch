@@ -29,7 +29,14 @@ germline_data <- Global_data %>%
       specimen_collection_date <= immunotherapy_start_date_1 &
       specimen_collection_date <= radiation_start_date_1            ~ "Yes",
     TRUE                                                            ~ "No"
-  ))
+  )) #%>% 
+  # mutate(blood_bf_treatment_30days = case_when(
+  #   specimen_collection_date <= (chemotherapy_start_date_1 + 30) &
+  #     specimen_collection_date <= (hormone_therapy_start_date_1 + 30) &
+  #     specimen_collection_date <= (immunotherapy_start_date_1 + 30) &
+  #     specimen_collection_date <= (radiation_start_date_1 + 30)       ~ "Yes",
+  #   TRUE                                                            ~ "No"
+  # ))
 
 
 

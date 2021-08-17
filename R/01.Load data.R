@@ -17,6 +17,11 @@ breast_dna <-
                     sheet = "UpdatedDeidentified_BioSpecimen") %>% 
   janitor::clean_names()
 
+breast_info <- 
+  readxl::read_xlsx(paste0(path, "/raw data/Updated_10R21000238_De-identified_for_Breast_pats_wDNA.xlsx"),
+                    sheet = "De-identified_PTE_CR") %>% 
+  janitor::clean_names()
+
 Chemot <- 
   readxl::read_xlsx(paste0(path, "/raw data/Updated_10R21000238_De-identified_for_Breast_pats_wDNA.xlsx"),
                     sheet = "De-identified_Treatment_Chemoth") %>% 
@@ -40,10 +45,9 @@ Radiot <-
 
 
 ################################################################################# II ### Data cleaning
-# Domo
+# Demo
 Demographic <- Demographic %>% 
   mutate(across(where(is.character), ~str_to_lower(.)))
-  
 
 # DNA
 breast_dna <- breast_dna %>% 
@@ -60,32 +64,89 @@ breast_dna <-
   purrr::keep(~!all(is.na(.))) %>% 
   select(deidentified_patient_id, ends_with("_1")) %>% 
   `colnames<-`(str_remove(colnames(.), "_1"))
-  
 # write_rds(breast_dna, "breast_dna.rds")
+
+breast_info <- 
+  breast_info %>% ##################################################### Fix bug
+  left_join(., 
+            Demographic %>% 
+              select(deidentified_patient_id,
+                "date_of_birth"), 
+            by = "date_of_birth")
+
 
 # Chemot
 Chemot <- Chemot %>% 
   filter(chemotherapy_type == "CHEMO NOS" |
-           chemotherapy_type == "CONTRAINDICATED" |
            chemotherapy_type == "MULTI-AGENT CHEMO" |
-           chemotherapy_type == "NONE, NOT PLANNED" |
-           chemotherapy_type == "SINGLE-AGENT CHEMO") %>% 
-  
+           chemotherapy_type == "NONE, NOT PLANNED" | # clean more
+           chemotherapy_type == "RECOMMENDED,UNKN IF GIVEN" | # clean more
+           chemotherapy_type == "SINGLE-AGENT CHEMO" |
+           chemotherapy_type == "UNKNOWN; DC ONLY"  # clean more
+         ) %>% 
   mutate(across(where(is.character), ~str_to_lower(.))) %>% 
+  # Make it easier to not have na for future filtering
+  mutate(chemotherapy_completion_status_first_course = case_when(
+    !is.na(chemotherapy_drug) |
+      !is.na(chemotherapy_start_date)                        ~ coalesce(chemotherapy_completion_status_first_course, "chemo given")
+  )) %>% 
+  
+  # filtering
+  # Remove NA in both drug name and date
+  filter(!(is.na(chemotherapy_drug) & is.na(chemotherapy_start_date) & is.na(chemotherapy_end_date))) %>%  # remove 341
+  # Remove no chemo given in chemotherapy_drug
+  filter(chemotherapy_drug != "no chemo given" | # remove 137
+           is.na(chemotherapy_drug)) %>% 
+  # Remove no chemotherapy when 18.. or 2300 dates only
+  filter(!(str_detect(chemotherapy_start_date, "12:00:00 am") & # remove 271
+             chemotherapy_completion_status_first_course == "no chemotherapy")) %>% 
+
+  
+  # To help after removing the unknown date
+  mutate(drugs_unk = case_when(
+    str_detect(chemotherapy_start_date, "12:00:00 am") &
+      is.na(chemotherapy_drug)                              ~ "unk drug, 1800 date",
+    !is.na(chemotherapy_start_date) &
+      is.na(chemotherapy_drug)                              ~ "unk drug",
+    is.na(chemotherapy_start_date) &
+      is.na(chemotherapy_drug)                              ~ "unk drug, NA date"
+  )) %>% 
+  mutate(date_unk = case_when(
+    str_detect(chemotherapy_start_date, "12:00:00 am") &
+      !is.na(chemotherapy_drug)                             ~ "known drug, 1800 date",
+    !is.na(chemotherapy_start_date) &
+      !is.na(chemotherapy_drug)                             ~ "known drug",
+    is.na(chemotherapy_start_date) &
+      !is.na(chemotherapy_drug)                             ~ "unk drug, NA date",
+    str_detect(chemotherapy_start_date, "12:00:00 am") &
+      is.na(chemotherapy_drug)                              ~ "unk drug, 1800 date",
+    !is.na(chemotherapy_start_date) &
+      is.na(chemotherapy_drug)                              ~ "unk drug, known date",
+  )) %>% 
+  mutate(chemotherapy_drug = coalesce(chemotherapy_drug, date_unk)) %>% 
+  
+  
+  
   mutate(chemotherapy_start_date = case_when(
-    str_detect(chemotherapy_start_date, "12:00:00 AM")       ~ NA_character_,
+    str_detect(chemotherapy_start_date, "12:00:00 am")       ~ NA_character_,
     TRUE                                                     ~ chemotherapy_start_date
   ), 
   chemotherapy_start_date = as.Date(as.numeric(chemotherapy_start_date), 
                                                 origin = "1899-12-30")
   ) %>% 
   mutate(chemotherapy_end_date = case_when(
-    str_detect(chemotherapy_end_date, "12:00:00 AM")         ~ NA_character_,
+    str_detect(chemotherapy_end_date, "12:00:00 am")         ~ NA_character_,
     TRUE                                                     ~ chemotherapy_end_date
   ), 
   chemotherapy_end_date = as.Date(as.numeric(chemotherapy_end_date), 
                                      origin = "1899-12-30")
   ) %>% 
+  
+  # Create a really early date to add to NAs date to make sure to exclude these patients
+  mutate(chemotherapy_start_date = 
+           coalesce(chemotherapy_start_date, 
+                    as.Date("1700-01-01", origin = "1899-12-30"))) %>%  # 4,293 dates created
+  
   select(deidentified_patient_id, chemotherapy_drug, chemotherapy_start_date, chemotherapy_end_date) %>% 
   distinct() %>% 
   group_by(deidentified_patient_id, chemotherapy_start_date, chemotherapy_end_date) %>%
@@ -198,6 +259,7 @@ Radiot <- Radiot %>%
 
 ################################################################################# III ### Merge data
 Global_data <- full_join(Demographic, breast_dna, by = "deidentified_patient_id") %>% 
+  full_join(., breast_info, by = "deidentified_patient_id") %>% 
   full_join(., Chemot, by = "deidentified_patient_id") %>% 
   full_join(., Hormonet, by = "deidentified_patient_id") %>% 
   full_join(., Immnunot, by = "deidentified_patient_id") %>% 
