@@ -89,7 +89,8 @@ We have `r length(unique(germline_data$deidentified_patient_id))` unique breast 
 
 ```{r}
 germline_data %>% 
-  select("race_derived", "ethnicity_derived") %>% 
+  select("race_derived", "ethnicity_derived",
+         "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2") %>% 
   tbl_summary()
 ```
 
@@ -171,14 +172,63 @@ knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treat
 
 ```{r}
 germline_data %>% 
-  select(blood_bf_chemo, blood_bf_horm, blood_bf_immu, blood_bf_rad, blood_bf_treatment) %>% 
+  select(blood_bf_chemo, blood_bf_horm, blood_bf_immu, blood_bf_rad, blood_bf_treatment#, blood_bf_treatment_30days
+         ) %>% 
   tbl_summary()
 ```
 
+# Focus on the patients with blood before treatments
+
+```{r}
+blood_bf_treat <- germline_data %>% 
+  filter(blood_bf_treatment == "Yes")
+```
 
 
+```{r}
+blood_bf_treat %>% 
+  select("race_derived", "ethnicity_derived",
+         "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2") %>% 
+  tbl_summary()
 
 
+venn.diagram(
+  x = list(chem = c(blood_bf_treat[ !is.na(blood_bf_treat$chemotherapy_start_date_1), ]$deidentified_patient_id),
+           hor = c(blood_bf_treat[ !is.na(blood_bf_treat$hormone_therapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(blood_bf_treat[ !is.na(blood_bf_treat$immunotherapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(blood_bf_treat[ !is.na(blood_bf_treat$radiation_start_date_1), ]$deidentified_patient_id)
+           ),
+  category.names = c("Chemotherapy", "Hormonetherapy", "Immnunotherapy", "Radiotherapy"
+                     ),
+  filename = 'Treatments in germline data2.png',
+  output=TRUE,
+
+  # Output features
+  imagetype="png" ,
+  height = 1000 ,
+  width = 1000 ,
+  resolution = 300,
+  compression = "lzw",
+
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = c(viridis::cividis(4) ),
+  margin = 0.2,
+
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.pos = c(-40, 40, -50, 50),
+  cat.dist = c(0.3, 0.3, 0.2, 0.2),
+  # ext.percent = 2
+  #ext.percent = 5
+)
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in germline data2.png')
+```
+
+# Do these patients have a later blood sample?
 
 
 
