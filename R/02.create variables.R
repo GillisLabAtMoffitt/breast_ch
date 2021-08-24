@@ -1,5 +1,8 @@
-germline_data <- Global_data %>% 
-  filter(!is.na(specimen_collection_date)) %>% 
+blood_patients <- blood_patients %>% 
+  # create age
+  # mutate(age_at_diagnosis = interval(start = date_of_birth, end = date_of_diagnosis)/
+  #          duration(n = 1, units = "years")) %>% 
+  # create treatments cat
   mutate(had_treatment = case_when(
     !is.na(chemotherapy_start_date_1) |
       !is.na(hormone_therapy_start_date_1) |
@@ -29,14 +32,16 @@ germline_data <- Global_data %>%
       specimen_collection_date <= immunotherapy_start_date_1 &
       specimen_collection_date <= radiation_start_date_1            ~ "Yes",
     TRUE                                                            ~ "No"
-  )) #%>% 
-  # mutate(blood_bf_treatment_30days = case_when(
-  #   specimen_collection_date <= (chemotherapy_start_date_1 + 30) &
-  #     specimen_collection_date <= (hormone_therapy_start_date_1 + 30) &
-  #     specimen_collection_date <= (immunotherapy_start_date_1 + 30) &
-  #     specimen_collection_date <= (radiation_start_date_1 + 30)       ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # ))
+  )) %>% 
+  mutate(blood_bf_treatment_30days = case_when(
+    specimen_collection_date <= (chemotherapy_start_date_1 + days(30)) &
+      specimen_collection_date <= (hormone_therapy_start_date_1 + days(30)) &
+      specimen_collection_date <= (immunotherapy_start_date_1 + days(30)) &
+      specimen_collection_date <= (radiation_start_date_1 + days(30))
+    ~ "Yes",
+    TRUE                                                            ~ "No"
+  ))
+  
 
 
 
@@ -57,4 +62,6 @@ germline_data <- Global_data %>%
 
 
 
-write_rds(germline_data, "germline_data.rds")
+write_rds(blood_patients, "blood_patients.rds")
+
+# End create variables
