@@ -47,7 +47,7 @@ library(gtsummary)
 
 ```{r}
 breast_dna <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/breast_dna.rds")
-germline_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/germline_data.rds")
+blood_patients <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
 Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Global_data.rds")
 ```
 
@@ -55,9 +55,9 @@ Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Globa
 
 ```{r, out.width='100%'}
 venn.diagram(
-  x = list(Global_data$deidentified_patient_id, germline_data$deidentified_patient_id),
-  category.names = c("Clinical data" , "Germline data"),
-  filename = 'Patients with germline data.png',
+  x = list(Global_data$deidentified_patient_id, blood_patients$deidentified_patient_id),
+  category.names = c("Clinical data" , "Blood samples"),
+  filename = 'Patients with blood samples.png',
   output=TRUE,
   
   # Output features
@@ -82,13 +82,13 @@ venn.diagram(
   # ext.percent = 2
   #ext.percent = 5
 )
-knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Patients with germline data.png')
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Patients with blood samples.png')
 ```
 
-We have `r length(unique(germline_data$deidentified_patient_id))` unique breast cancer patients with a Blood sample.
+We have `r length(unique(blood_patients$deidentified_patient_id))` unique breast cancer patients with a Blood sample.
 
 ```{r}
-germline_data %>% 
+blood_patients %>% 
   select("race_derived", "ethnicity_derived",
          "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2") %>% 
   tbl_summary()
@@ -100,8 +100,8 @@ germline_data %>%
 
 ```{r, out.width='100%'}
 venn.diagram(
-  x = list(chem = c(germline_data$deidentified_patient_id),
-           hor = c(germline_data[ germline_data$had_treatment == "Yes", ]$deidentified_patient_id)
+  x = list(chem = c(blood_patients$deidentified_patient_id),
+           hor = c(blood_patients[ blood_patients$had_treatment == "Yes", ]$deidentified_patient_id)
            ),
   category.names = c("Blood available", "Received \nTreatments"
                      ),
@@ -133,14 +133,14 @@ venn.diagram(
 knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment in germline data.png')
 
 venn.diagram(
-  x = list(chem = c(germline_data[ !is.na(germline_data$chemotherapy_start_date_1), ]$deidentified_patient_id),
-           hor = c(germline_data[ !is.na(germline_data$hormone_therapy_start_date_1), ]$deidentified_patient_id),
-           chem = c(germline_data[ !is.na(germline_data$immunotherapy_start_date_1), ]$deidentified_patient_id),
-           chem = c(germline_data[ !is.na(germline_data$radiation_start_date_1), ]$deidentified_patient_id)
+  x = list(chem = c(blood_patients[ !is.na(blood_patients$chemotherapy_start_date_1), ]$deidentified_patient_id),
+           hor = c(blood_patients[ !is.na(blood_patients$hormone_therapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(blood_patients[ !is.na(blood_patients$immunotherapy_start_date_1), ]$deidentified_patient_id),
+           chem = c(blood_patients[ !is.na(blood_patients$radiation_start_date_1), ]$deidentified_patient_id)
            ),
   category.names = c("Chemotherapy", "Hormonetherapy", "Immnunotherapy", "Radiotherapy"
                      ),
-  filename = 'Treatments in germline data.png',
+  filename = 'Treatments in patients with blood samples.png',
   output=TRUE,
 
   # Output features
@@ -165,13 +165,13 @@ venn.diagram(
   # ext.percent = 2
   #ext.percent = 5
 )
-knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in germline data.png')
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in patients with blood samples.png')
 ```
 
 # Patients who had blood before treatments
 
 ```{r}
-germline_data %>% 
+blood_patients %>% 
   select(blood_bf_chemo, blood_bf_horm, blood_bf_immu, blood_bf_rad, blood_bf_treatment#, blood_bf_treatment_30days
          ) %>% 
   tbl_summary()
@@ -180,7 +180,7 @@ germline_data %>%
 # Focus on the patients with blood before treatments
 
 ```{r}
-blood_bf_treat <- germline_data %>% 
+blood_bf_treat <- blood_patients %>% 
   filter(blood_bf_treatment == "Yes")
 ```
 
@@ -200,7 +200,7 @@ venn.diagram(
            ),
   category.names = c("Chemotherapy", "Hormonetherapy", "Immnunotherapy", "Radiotherapy"
                      ),
-  filename = 'Treatments in germline data2.png',
+  filename = 'Treatments in patients with blood samples2.png',
   output=TRUE,
 
   # Output features
@@ -225,7 +225,7 @@ venn.diagram(
   # ext.percent = 2
   #ext.percent = 5
 )
-knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in germline data2.png')
+knitr::include_graphics('/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatments in patients with blood samples2.png')
 ```
 
 # Do these patients have a later blood sample?
