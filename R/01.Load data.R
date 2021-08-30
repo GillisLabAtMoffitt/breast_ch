@@ -3,6 +3,7 @@ library(tidyverse)
 library(data.table)
 library(VennDiagram)
 library(lubridate)
+library(gtsummary)
 
 
 ################################################################################# I ### Load data
@@ -335,7 +336,11 @@ Radiot <- Radiot %>%
 
 
 # Combine
-treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot)
+treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>% 
+  arrange(deidentified_patient_id, treatment_start_date) %>% 
+  group_by(deidentified_patient_id, treatment_type) %>% 
+  mutate(treatment_line = row_number(deidentified_patient_id)) %>% 
+  unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE)
 
 # DNA
 breast_dna <- breast_dna %>% 
@@ -343,48 +348,80 @@ breast_dna <- breast_dna %>%
   mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
   select(deidentified_patient_id, sample_family_id_sf, sample_id,
          specimen_collection_date) %>% 
-  arrange(deidentified_patient_id, specimen_collection_date)
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id, sample_family_id_sf, specimen_collection_date) %>% 
+  summarise_at(vars(sample_id), str_c, collapse = "; ") #%>%
+  # separate(col = sample_id, paste("sample_id", 1:3, sep="_"), sep = "; ", extra = "drop", fill = "right")
 
 
-breast_dna <- breast_dna %>% left_join(treatment, by = "deidentified_patient_id") %>% 
+breast_dna1 <- breast_dna %>% left_join(treatment, by = "deidentified_patient_id") %>% 
   
   mutate(blood_bf_treatment = case_when(
-    specimen_collection_date <= treatment_start_date                ~ treatment_type,
-    TRUE                                                            ~ "No"
+    specimen_collection_date <= treatment_start_date                ~ treatment_line,
+    TRUE                                                            ~ NA_character_
   )) %>% 
-  mutate(blood_bf_treatment_30days = case_when(
-    specimen_collection_date <= (treatment_start_date + days(30))   ~ treatment_type,
-    TRUE                                                            ~ "No"
+  mutate(blood_bf_30days_treatment = case_when(
+    specimen_collection_date <= (treatment_start_date + days(30))   ~ treatment_line,
+    TRUE                                                            ~ NA_character_
   )) %>% 
   
   mutate(blood_after_treatment = case_when(
-    specimen_collection_date > treatment_start_date                 ~ treatment_type,
-    TRUE                                                            ~ "No"
+    specimen_collection_date > treatment_start_date                 ~ treatment_line,
+    TRUE                                                            ~ NA_character_
   )) %>% 
-  mutate(blood_after_treatment_30days = case_when(
-    specimen_collection_date > (treatment_start_date + days(30))   ~ treatment_type,
-    TRUE                                                            ~ "No"
-  ))
-
-
-
-
-# 
-breast_dna <-
-  dcast(setDT(breast_dna), deidentified_patient_id+sample_family_id_sf+sample_id+specimen_collection_date ~ rowid(deidentified_patient_id),
-        value.var = c("blood_bf_treatment", "blood_bf_treatment_30days",
-                      "blood_after_treatment", "blood_after_treatment_30days")) %>% 
-  unite(col = c("blood_bf_treatment"), sep = ";", remove = TRUE) %>% 
-  unite(col = c("blood_bf_treatment"), sep = ";", remove = TRUE) %>% 
-  unite(col = c("blood_bf_treatment"), sep = ";", remove = TRUE) %>% 
-  unite(col = c("blood_bf_treatment"), sep = ";", remove = TRUE) 
-  
-breast_dna <-
-  dcast(setDT(breast_dna), deidentified_patient_id ~ rowid(deidentified_patient_id),
-        value.var = c("sample_family_id_sf", "sample_id",
-                      "specimen_collection_date", ...)) %>%
+  mutate(blood_after_30days_treatment = case_when(
+    specimen_collection_date > (treatment_start_date + days(30))   ~ treatment_line,
+    TRUE                                                            ~ NA_character_
+  )) %>% 
+  # distinct(deidentified_patient_id, sample_family_id_sf, sample_id,
+  #          specimen_collection_date, )
+  arrange(deidentified_patient_id, specimen_collection_date, blood_bf_treatment)
   
   
+
+breast_dna2 <- 
+  dcast(setDT(breast_dna1),
+        deidentified_patient_id+sample_family_id_sf+sample_id+specimen_collection_date ~ rowid(deidentified_patient_id),
+        value.var = c("blood_bf_treatment", "blood_bf_30days_treatment",
+                      "blood_after_treatment", "blood_after_30days_treatment")) %>% 
+  unite("blood_bf_treatment", starts_with("blood_bf_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+  unite("blood_bf_30days_treatment", starts_with("blood_bf_30days_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+  unite("blood_after_treatment", starts_with("blood_after_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+  unite("blood_after_30days_treatment", starts_with("blood_after_30days_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>% 
+  mutate(across(where(is.character), ~ na_if(., ""))) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_count = n()) %>% 
+  ungroup()
+
+breast_dna2 %>% distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(sample_count) %>% 
+  tbl_summary(sort = list(everything() ~ "frequency"))
+
+
+breast_dna2 %>% 
+  ggplot(aes(x= blood_bf_treatment))+
+  geom_bar()+
+  coord_flip()
+breast_dna2 %>% 
+  select(blood_bf_treatment) %>% 
+  tbl_summary(sort = list(everything() ~ "frequency"))
+
+table(breast_dna2$blood_bf_treatment, breast_dna2$blood_after_treatment)
+
+
+breast_dna3 <-
+  dcast(setDT(breast_dna2), deidentified_patient_id ~ rowid(deidentified_patient_id),
+        value.var = c("sample_family_id_sf", 
+                      "sample_id",
+                      "specimen_collection_date", 
+                      "blood_bf_treatment", "blood_bf_30days_treatment", 
+                      "blood_after_treatment", "blood_after_30days_treatment"),
+        sep = "_sample")
+
+
+# breast_dna3 <- breast_dna2 %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   summarise_at(vars(sample_family_id_sf, specimen_collection_date, blood_bf_treatment, blood_bf_30days_treatment, blood_after_treatment, blood_after_30days_treatment), paste, collapse = "/ ") 
   
   
   # purrr::keep(~!all(is.na(.))) %>%
