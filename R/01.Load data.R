@@ -126,21 +126,21 @@ Chemot <- Chemot %>%
   summarise_at(vars(chemotherapy_drug), str_c, collapse = "; ") %>% 
   ungroup()
 
+# pivot wider, use dcast bc better to keep date class
+chemot <- dcast(setDT(Chemot), deidentified_patient_id ~ rowid(deidentified_patient_id),
+      value.var = c(
+        "chemotherapy_drug",
+        "chemotherapy_start_date",
+        "chemotherapy_end_date"
+      )
+)
+
 Chemot <- Chemot %>% 
   select(deidentified_patient_id, treatment_start_date = chemotherapy_start_date, 
          treatment_end_date = chemotherapy_end_date, treatment = chemotherapy_drug) %>% 
   mutate(treatment_type = "chemo")
 
 
-
-# pivot wider, use dcast bc better to keep date class
-# Chemot <- dcast(setDT(Chemot), deidentified_patient_id ~ rowid(deidentified_patient_id),
-#       value.var = c(
-#         "chemotherapy_drug",
-#         "chemotherapy_start_date",
-#         "chemotherapy_end_date"
-#       )
-# )
 
 # Hormonet
 Hormonet <- Hormonet %>% 
@@ -194,13 +194,13 @@ Hormonet <- Hormonet %>%
   summarise_at(vars(hormone_therapy_drug), str_c, collapse = "; ") %>% 
   ungroup()
 
-# Hormonet <- dcast(setDT(Hormonet), deidentified_patient_id ~ rowid(deidentified_patient_id),
-#                 value.var = c(
-#                   "hormone_therapy_drug",
-#                   "hormone_therapy_start_date",
-#                   "hormone_therapy_end_date"
-#                 )
-# )
+hormonet <- dcast(setDT(Hormonet), deidentified_patient_id ~ rowid(deidentified_patient_id),
+                value.var = c(
+                  "hormone_therapy_drug",
+                  "hormone_therapy_start_date",
+                  "hormone_therapy_end_date"
+                )
+)
 
 Hormonet <- Hormonet %>% 
   select(deidentified_patient_id, treatment_start_date = hormone_therapy_start_date, 
@@ -253,13 +253,13 @@ Immnunot <- Immnunot %>%
   summarise_at(vars(immunotherapy_drug), str_c, collapse = "; ") %>% 
   ungroup()
 
-# Immnunot <- dcast(setDT(Immnunot), deidentified_patient_id ~ rowid(deidentified_patient_id),
-#                   value.var = c(
-#                     "immunotherapy_drug",
-#                     "immunotherapy_start_date",
-#                     "immunotherapy_end_date"
-#                   )
-# )
+immnunot <- dcast(setDT(Immnunot), deidentified_patient_id ~ rowid(deidentified_patient_id),
+                  value.var = c(
+                    "immunotherapy_drug",
+                    "immunotherapy_start_date",
+                    "immunotherapy_end_date"
+                  )
+)
 
 Immnunot <- Immnunot %>% 
   select(deidentified_patient_id, treatment_start_date = immunotherapy_start_date, 
@@ -318,13 +318,13 @@ Radiot <- Radiot %>%
   ungroup()
 
 
-# Radiot <- dcast(setDT(Radiot), deidentified_patient_id ~ rowid(deidentified_patient_id),
-#                   value.var = c(
-#                     "boost_dose_c_gy",
-#                     "radiation_start_date",
-#                     "radiation_end_date"
-#                   )
-# )
+radiot <- dcast(setDT(Radiot), deidentified_patient_id ~ rowid(deidentified_patient_id),
+                  value.var = c(
+                    "boost_dose_c_gy",
+                    "radiation_start_date",
+                    "radiation_end_date"
+                  )
+)
 
 
 Radiot <- Radiot %>% 
@@ -342,57 +342,217 @@ treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
   mutate(treatment_line = row_number(deidentified_patient_id)) %>% 
   unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE)
 
+Treatment <- full_join(chemot, hormonet, by = "deidentified_patient_id") %>% 
+  full_join(., immnunot, by = "deidentified_patient_id") %>% 
+  full_join(., radiot, by = "deidentified_patient_id") %>% 
+  mutate(had_chemo = case_when(
+    !is.na(chemotherapy_start_date_1) ~ "Yes"
+  )) %>% 
+  mutate(had_hormone = case_when(
+    !is.na(hormone_therapy_start_date_1) ~ "Yes"
+  )) %>% 
+  mutate(had_immuno = case_when(
+    !is.na(immunotherapy_start_date_1) ~ "Yes"
+  )) %>% 
+  mutate(had_rad = case_when(
+    !is.na(radiation_start_date_1) ~ "Yes"
+  )) %>% 
+  mutate(had_treatment = case_when(
+    !is.na(chemotherapy_start_date_1) &
+    !is.na(hormone_therapy_start_date_1) &
+    !is.na(immunotherapy_start_date_1) &
+    !is.na(radiation_start_date_1)             ~ "Yes"
+  ))
+
+
+
+
+
 # DNA
 breast_dna <- breast_dna %>% 
   filter(derived_tissue_type == "Blood",sample_type != "WBC/RBC") %>% 
   mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
   select(deidentified_patient_id, sample_family_id_sf, sample_id,
-         specimen_collection_date) %>% 
+         specimen_collection_date) %>%
+  mutate(specimen_collection_date = as.Date(specimen_collection_date, format = "%Y-%M-%d")) %>% 
   arrange(deidentified_patient_id, specimen_collection_date) %>% 
   group_by(deidentified_patient_id, sample_family_id_sf, specimen_collection_date) %>% 
-  summarise_at(vars(sample_id), str_c, collapse = "; ") #%>%
+  summarise_at(vars(sample_id), str_c, collapse = "; ") %>%
   # separate(col = sample_id, paste("sample_id", 1:3, sep="_"), sep = "; ", extra = "drop", fill = "right")
+  ungroup()
 
 
-breast_dna1 <- breast_dna %>% left_join(treatment, by = "deidentified_patient_id") %>% 
-  
+breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "deidentified_patient_id") %>% 
+  # group_by(deidentified_patient_id) %>% 
+  mutate(blood_bf_chemo = case_when(
+    specimen_collection_date <= chemotherapy_start_date_1                ~ "Yes",
+    specimen_collection_date > chemotherapy_start_date_1                 ~ "No",
+    # is.na(chemotherapy_start_date_1)                                     ~ "none",
+    TRUE                                                            ~ NA_character_
+  )) %>% 
+  mutate(blood_bf_hormone = case_when(
+    specimen_collection_date <= hormone_therapy_start_date_1                ~ "Yes",
+    specimen_collection_date > hormone_therapy_start_date_1                 ~ "No",
+    # is.na(hormone_therapy_start_date_1)                                     ~ "none",
+    TRUE                                                            ~ NA_character_
+  )) %>% 
+  mutate(blood_bf_immuno = case_when(
+    specimen_collection_date <= immunotherapy_start_date_1                ~ "Yes",
+    specimen_collection_date > immunotherapy_start_date_1                 ~ "No",
+    # is.na(immunotherapy_start_date_1)                                     ~ "none",
+    TRUE                                                            ~ NA_character_
+  )) %>% 
+  mutate(blood_bf_rad = case_when(
+    specimen_collection_date <= radiation_start_date_1                ~ "Yes",
+    specimen_collection_date > radiation_start_date_1                 ~ "No",
+    # is.na(radiation_start_date_1)                                     ~ "none",
+    TRUE                                                            ~ NA_character_
+  )) %>% 
   mutate(blood_bf_treatment = case_when(
-    specimen_collection_date <= treatment_start_date                ~ treatment_line,
+    specimen_collection_date <= chemotherapy_start_date_1 &
+      specimen_collection_date <= hormone_therapy_start_date_1 &
+      specimen_collection_date <= immunotherapy_start_date_1 &
+      specimen_collection_date <= radiation_start_date_1                ~ "Yes",
     TRUE                                                            ~ NA_character_
   )) %>% 
-  mutate(blood_bf_30days_treatment = case_when(
-    specimen_collection_date <= (treatment_start_date + days(30))   ~ treatment_line,
+  mutate(blood_bf_30_days_treatment = case_when(
+    specimen_collection_date <= (chemotherapy_start_date_1 + days(30)) &
+    specimen_collection_date <= (hormone_therapy_start_date_1 + days(30)) &
+    specimen_collection_date <= (immunotherapy_start_date_1 + days(30)) &
+    specimen_collection_date <= (radiation_start_date_1 + days(30))                ~ "Yes",
+    # specimen_collection_date > (first(treatment_start_date) + days(30))    ~ "No",
     TRUE                                                            ~ NA_character_
   )) %>% 
-  
-  mutate(blood_after_treatment = case_when(
-    specimen_collection_date > treatment_start_date                 ~ treatment_line,
-    TRUE                                                            ~ NA_character_
-  )) %>% 
-  mutate(blood_after_30days_treatment = case_when(
-    specimen_collection_date > (treatment_start_date + days(30))   ~ treatment_line,
-    TRUE                                                            ~ NA_character_
-  )) %>% 
+  # ungroup() %>% 
+  # mutate(treatment_bf_blood = case_when(
+  #   specimen_collection_date <= treatment_start_date                ~ "Blood first",
+  #   specimen_collection_date <= treatment_start_date                ~ treatment_line,
+  #   TRUE                                                            ~ NA_character_
+  # )) %>% 
+  # mutate(treatment_bf_30days_blood = case_when(
+  #   specimen_collection_date <= (treatment_start_date + days(30))   ~ "Blood first",
+  #   specimen_collection_date <= (treatment_start_date + days(30))   ~ treatment_line,
+  #   TRUE                                                            ~ NA_character_
+  # )) %>% 
+  # 
+  # mutate(treatment_after_blood = case_when(
+  #   specimen_collection_date > treatment_start_date                 ~ treatment_line,
+  #   TRUE                                                            ~ NA_character_
+  # )) %>% 
+  # mutate(treatment_after_30days_blood = case_when(
+  #   specimen_collection_date > (treatment_start_date + days(30))   ~ treatment_line,
+  #   TRUE                                                            ~ NA_character_
+  # )) %>% 
   # distinct(deidentified_patient_id, sample_family_id_sf, sample_id,
   #          specimen_collection_date, )
   arrange(deidentified_patient_id, specimen_collection_date, blood_bf_treatment)
-  
-  
 
-breast_dna2 <- 
-  dcast(setDT(breast_dna1),
-        deidentified_patient_id+sample_family_id_sf+sample_id+specimen_collection_date ~ rowid(deidentified_patient_id),
-        value.var = c("blood_bf_treatment", "blood_bf_30days_treatment",
-                      "blood_after_treatment", "blood_after_30days_treatment")) %>% 
-  unite("blood_bf_treatment", starts_with("blood_bf_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
-  unite("blood_bf_30days_treatment", starts_with("blood_bf_30days_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
-  unite("blood_after_treatment", starts_with("blood_after_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
-  unite("blood_after_30days_treatment", starts_with("blood_after_30days_treatment"), sep = "; ", remove = TRUE, na.rm = TRUE) %>% 
-  mutate(across(where(is.character), ~ na_if(., ""))) %>% 
-  group_by(deidentified_patient_id) %>% 
-  mutate(sample_count = n()) %>% 
-  ungroup()
+# breast_dna1 %>% distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+#   select(blood_bf_chemo, blood_bf_hormone, 
+#          blood_bf_immuno, blood_bf_rad,
+#          blood_bf_treatment, blood_bf_30_days_treatment) %>% 
+#   tbl_summary(sort = list(everything() ~ "frequency"))
 
+breast_dna2 <-
+  dcast(setDT(breast_dna1), deidentified_patient_id ~ rowid(deidentified_patient_id),
+        value.var = c("sample_family_id_sf", 
+                      "sample_id",
+                      "specimen_collection_date", 
+                      "blood_bf_chemo", "blood_bf_hormone", 
+                      "blood_bf_immuno", "blood_bf_rad",
+                      "blood_bf_treatment", "blood_bf_30_days_treatment"),
+        sep = "_sample") %>% 
+  
+  full_join(., Treatment %>% 
+              select(deidentified_patient_id, had_chemo, had_hormone, had_immuno, had_rad, had_treatment),
+            by = "deidentified_patient_id") %>% 
+  
+  mutate(seq_sample_chemo = case_when(
+    blood_bf_chemo_sample1 == "Yes" &
+      if_any(contains("blood_bf_chemo_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  )) %>% 
+  mutate(seq_sample_hormone = case_when(
+    blood_bf_hormone_sample1 == "Yes" &
+      if_any(contains("blood_bf_hormone_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  )) %>% 
+  mutate(seq_sample_immuno = case_when(
+    blood_bf_immuno_sample1 == "Yes" &
+      if_any(contains("blood_bf_immuno_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  )) %>% 
+  mutate(seq_sample_rad = case_when(
+    blood_bf_rad_sample1 == "Yes" &
+      if_any(contains("blood_bf_rad_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  )) %>% 
+  mutate(seq_sample_treatment = case_when(
+    blood_bf_treatment_sample1 == "Yes" &
+      if_any(contains("blood_bf_treatment_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  ))
+
+tbl1 <- breast_dna2 %>% filter(had_chemo == "Yes") %>% 
+  select(Chemotherapy = blood_bf_chemo_sample1) %>% 
+  tbl_summary()
+tbl2 <- breast_dna2 %>% filter(had_hormone == "Yes") %>% 
+  select(Hormonetherapy = blood_bf_hormone_sample1) %>% 
+  tbl_summary()
+tbl3 <- breast_dna2 %>% filter(had_immuno == "Yes") %>% 
+  select(Immnunotherapy = blood_bf_immuno_sample1) %>% 
+  tbl_summary()
+tbl4 <- breast_dna2 %>% filter(had_rad == "Yes") %>% 
+  select(Radiotherapy = blood_bf_rad_sample1) %>% 
+  tbl_summary()
+tbl5 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
+  select(Treatment = blood_bf_treatment_sample1) %>% 
+  tbl_summary()
+
+tbl_s1 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5))
+
+tbl1 <- breast_dna2 %>% filter(had_chemo == "Yes") %>% 
+  select(Chemotherapy = seq_sample_chemo) %>% 
+  tbl_summary()
+tbl2 <- breast_dna2 %>% filter(had_hormone == "Yes") %>% 
+  select(Hormonetherapy = seq_sample_hormone) %>% 
+  tbl_summary()
+tbl3 <- breast_dna2 %>% filter(had_immuno == "Yes") %>% 
+  select(Immnunotherapy = seq_sample_immuno) %>% 
+  tbl_summary()
+tbl4 <- breast_dna2 %>% filter(had_rad == "Yes") %>% 
+  select(Radiotherapy = seq_sample_rad) %>% 
+  tbl_summary()
+tbl5 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
+  select(Treatment = seq_sample_treatment) %>% 
+  tbl_summary()
+
+tbl_s2 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5))
+
+tbl_merge(list(tbl_s1, tbl_s2), tab_spanner = c("**blood before**", "**Sequential blood after**"))
+
+
+
+# breast_dna2 <- 
+#   dcast(setDT(breast_dna1),
+#         deidentified_patient_id+sample_family_id_sf+sample_id+specimen_collection_date+blood_bf_treatment+blood_bf_30_days_treatment ~ 
+#           rowid(deidentified_patient_id),
+#         value.var = c(
+#                       "treatment_bf_blood", "treatment_bf_30days_blood", 
+#                       "treatment_after_blood", "treatment_after_30days_blood")) %>% 
+#   unite("treatment_bf_blood", starts_with("treatment_bf_blood"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+#   unite("treatment_bf_30days_blood", starts_with("treatment_bf_30days_blood"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+#   unite("treatment_after_blood", starts_with("treatment_after_blood"), sep = "; ", remove = TRUE, na.rm = TRUE) %>%
+#   unite("treatment_after_30days_blood", starts_with("treatment_after_30days_blood"), sep = "; ", remove = TRUE, na.rm = TRUE) %>% 
+#   mutate(across(where(is.character), ~ na_if(., ""))) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sample_count = n()) %>% 
+#   ungroup() %>% 
+#   mutate(blood_bf_chemo = case_when(
+#     treatment_bf_blood
+#   ))
+
+# Number of sample per patient
 breast_dna2 %>% distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(sample_count) %>% 
   tbl_summary(sort = list(everything() ~ "frequency"))
@@ -402,20 +562,15 @@ breast_dna2 %>%
   ggplot(aes(x= blood_bf_treatment))+
   geom_bar()+
   coord_flip()
-breast_dna2 %>% 
-  select(blood_bf_treatment) %>% 
-  tbl_summary(sort = list(everything() ~ "frequency"))
-
-table(breast_dna2$blood_bf_treatment, breast_dna2$blood_after_treatment)
-
 
 breast_dna3 <-
   dcast(setDT(breast_dna2), deidentified_patient_id ~ rowid(deidentified_patient_id),
         value.var = c("sample_family_id_sf", 
                       "sample_id",
                       "specimen_collection_date", 
-                      "blood_bf_treatment", "blood_bf_30days_treatment", 
-                      "blood_after_treatment", "blood_after_30days_treatment"),
+                      "blood_bf_treatment", "blood_bf_30_days_treatment", 
+                      "treatment_bf_blood", "treatment_bf_30days_blood",
+                      "treatment_after_blood", "treatment_after_30days_blood"),
         sep = "_sample")
 
 
