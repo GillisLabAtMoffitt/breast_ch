@@ -357,6 +357,10 @@ Treatment <- full_join(chemot, hormonet, by = "deidentified_patient_id") %>%
   mutate(had_rad = case_when(
     !is.na(radiation_start_date_1) ~ "Yes"
   )) %>% 
+  mutate(had_chemo_rad = case_when(
+    !is.na(chemotherapy_start_date_1) &
+    !is.na(radiation_start_date_1) ~ "Yes"
+  )) %>% 
   mutate(had_treatment = case_when(
     !is.na(chemotherapy_start_date_1) &
     !is.na(hormone_therapy_start_date_1) &
@@ -406,6 +410,14 @@ breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "deidentified_patient
     specimen_collection_date <= radiation_start_date_1                ~ "Yes",
     specimen_collection_date > radiation_start_date_1                 ~ "No",
     # is.na(radiation_start_date_1)                                     ~ "none",
+    TRUE                                                            ~ NA_character_
+  )) %>% 
+  mutate(blood_bf_chemo_rad = case_when(
+    specimen_collection_date <= chemotherapy_start_date_1 &
+      specimen_collection_date <= radiation_start_date_1                ~ "Yes",
+    specimen_collection_date > chemotherapy_start_date_1 |
+      specimen_collection_date > radiation_start_date_1                 ~ "No",
+    # is.na(chemotherapy_start_date_1)                                     ~ "none",
     TRUE                                                            ~ NA_character_
   )) %>% 
   mutate(blood_bf_treatment = case_when(
@@ -460,11 +472,12 @@ breast_dna2 <-
                       "specimen_collection_date", 
                       "blood_bf_chemo", "blood_bf_hormone", 
                       "blood_bf_immuno", "blood_bf_rad",
+                      "blood_bf_chemo_rad",
                       "blood_bf_treatment", "blood_bf_30_days_treatment"),
         sep = "_sample") %>% 
   
   full_join(., Treatment %>% 
-              select(deidentified_patient_id, had_chemo, had_hormone, had_immuno, had_rad, had_treatment),
+              select(deidentified_patient_id, had_chemo, had_hormone, had_immuno, had_rad, had_chemo_rad, had_treatment),
             by = "deidentified_patient_id") %>% 
   
   mutate(seq_sample_chemo = case_when(
@@ -487,6 +500,11 @@ breast_dna2 <-
       if_any(contains("blood_bf_rad_sample"), ~ . == "No") ~ "Yes",
     TRUE ~ "No"
   )) %>% 
+  mutate(seq_sample_chemo_rad = case_when(
+    blood_bf_chemo_rad_sample1 == "Yes" &
+      if_any(contains("blood_bf_chemo_rad_sample"), ~ . == "No") ~ "Yes",
+    TRUE ~ "No"
+  )) %>% 
   mutate(seq_sample_treatment = case_when(
     blood_bf_treatment_sample1 == "Yes" &
       if_any(contains("blood_bf_treatment_sample"), ~ . == "No") ~ "Yes",
@@ -505,11 +523,14 @@ tbl3 <- breast_dna2 %>% filter(had_immuno == "Yes") %>%
 tbl4 <- breast_dna2 %>% filter(had_rad == "Yes") %>% 
   select(Radiotherapy = blood_bf_rad_sample1) %>% 
   tbl_summary()
-tbl5 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
-  select(Treatment = blood_bf_treatment_sample1) %>% 
+tbl5 <- breast_dna2 %>% filter(had_chemo_rad == "Yes") %>% 
+  select(`Chemotherapy+Radiation` = blood_bf_chemo_rad_sample1) %>% 
+  tbl_summary()
+tbl6 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
+  select(`All Treatment` = blood_bf_treatment_sample1) %>% 
   tbl_summary()
 
-tbl_s1 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5))
+tbl_s1 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5, tbl6))
 
 tbl1 <- breast_dna2 %>% filter(had_chemo == "Yes") %>% 
   select(Chemotherapy = seq_sample_chemo) %>% 
@@ -523,13 +544,17 @@ tbl3 <- breast_dna2 %>% filter(had_immuno == "Yes") %>%
 tbl4 <- breast_dna2 %>% filter(had_rad == "Yes") %>% 
   select(Radiotherapy = seq_sample_rad) %>% 
   tbl_summary()
-tbl5 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
-  select(Treatment = seq_sample_treatment) %>% 
+tbl5 <- breast_dna2 %>% filter(had_chemo_rad == "Yes") %>% 
+  select(`Chemotherapy+Radiation` = seq_sample_chemo) %>% 
+  tbl_summary()
+tbl6 <- breast_dna2 %>% filter(had_treatment == "Yes") %>% 
+  select(`All Treatment` = seq_sample_treatment) %>% 
   tbl_summary()
 
-tbl_s2 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5))
+tbl_s2 <- tbl_stack(list(tbl1, tbl2, tbl3, tbl4, tbl5, tbl6))
 
-tbl_merge(list(tbl_s1, tbl_s2), tab_spanner = c("**blood before**", "**Sequential blood after**"))
+tbl_merge(list(tbl_s1, tbl_s2), tab_spanner = c("**Blood before**", "**Sequential blood after**")) %>% as_gt() %>%  
+  gt::tab_source_note(gt::md("**Unknown represent patients not treated for the corresponding category**"))
 
 
 
