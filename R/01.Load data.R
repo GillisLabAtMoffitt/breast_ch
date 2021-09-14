@@ -400,7 +400,7 @@ Treatment <- full_join(chemot, hormonet, by = "deidentified_patient_id") %>%
     !is.na(radiation_start_date_1)             ~ "Yes"
   ))
 
-
+write_rds(Treatment, "Treatment.rds")
 
 
 
@@ -417,6 +417,7 @@ breast_dna <- breast_dna %>%
   # separate(col = sample_id, paste("sample_id", 1:3, sep="_"), sep = "; ", extra = "drop", fill = "right")
   ungroup()
 
+# write_rds(breast_dna, "breast_dna.rds")
 
 breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "deidentified_patient_id") %>% 
   mutate(blood_bf_chemo = case_when(
@@ -782,29 +783,20 @@ sample_after_chemo <- breast_dna2 %>%
            abs(interval(start = specimen_collection_date, end = chemotherapy_start_date_1) /
                  duration(n = 1, units = "days"))) %>%
   arrange(deidentified_patient_id, interval_sample_chemo) %>%
-  distinct(deidentified_patient_id, .keep_all = TRUE)
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, interval_sample_chemo, everything())
 
-p <- qplot(x =interval_sample_chemo, data=subset(sample_after_chemo), fill=..count..,
-           geom="histogram",
-           binwidth = 100,
-)
-p + scale_fill_viridis_c(
-  alpha = 1,
-  begin = 0,
-  end = 1,
-  direction = 1,
-  option = "D",
-  values = NULL,
-  space = "Lab",
-  na.value = "grey50",
-  guide = "colourbar",
-  aesthetics = "fill"
-) +
+sample_after_chemo %>% 
+  ggplot(aes(x =interval_sample_chemo, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
   theme_minimal(base_size = 14) +
-  labs(x="Time from Blood Collection to Chemotherapy (in days)",
+  labs(x="Time from Blood Collection to Chemotherapy (in days)", 
        y="Number of Patient",
-       caption = "Each bar represents 100 days") +
-  facet_zoom(ylim = c(0, 10), zoom.size = 1)
+       caption = "Each bar represents 100 days")
 
 sample_after_hormone <- breast_dna2 %>%
   filter(seq_sample_hormone == "Yes") %>%
@@ -812,29 +804,20 @@ sample_after_hormone <- breast_dna2 %>%
            abs(interval(start = specimen_collection_date, end = hormone_therapy_start_date_1) /
                  duration(n = 1, units = "days"))) %>%
   arrange(deidentified_patient_id, interval_sample_hormone) %>%
-  distinct(deidentified_patient_id, .keep_all = TRUE)
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, interval_sample_hormone, everything())
 
-p <- qplot(x =interval_sample_hormone, data=subset(sample_after_hormone), fill=..count..,
-           geom="histogram",
-           binwidth = 100,
-)
-p + scale_fill_viridis_c(
-  alpha = 1,
-  begin = 0,
-  end = 1,
-  direction = 1,
-  option = "A",
-  values = NULL,
-  space = "Lab",
-  na.value = "grey50",
-  guide = "colourbar",
-  aesthetics = "fill"
-) +
+sample_after_hormone %>% 
+  ggplot(aes(x =interval_sample_hormone, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
   theme_minimal(base_size = 14) +
-  labs(x="Time from Blood Collection to Hormonetherapy (in days)",
+  labs(x="Time from Blood Collection to Hormonetherapy (in days)", 
        y="Number of Patient",
-       caption = "Each bar represents 100 days") +
-  facet_zoom(ylim = c(0, 10), zoom.size = 1)
+       caption = "Each bar represents 100 days")
 
 sample_after_immuno <- breast_dna2 %>%
   filter(seq_sample_immuno == "Yes") %>%
@@ -842,29 +825,20 @@ sample_after_immuno <- breast_dna2 %>%
            abs(interval(start = specimen_collection_date, end = immunotherapy_start_date_1) /
                  duration(n = 1, units = "days"))) %>%
   arrange(deidentified_patient_id, interval_sample_immuno) %>%
-  distinct(deidentified_patient_id, .keep_all = TRUE)
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, interval_sample_immuno, everything())
 
-p <- qplot(x =interval_sample_immuno, data=subset(sample_after_immuno), fill=..count..,
-           geom="histogram",
-           binwidth = 100,
-)
-p + scale_fill_viridis_c(
-  alpha = 1,
-  begin = 0,
-  end = 1,
-  direction = 1,
-  option = "H",
-  values = NULL,
-  space = "Lab",
-  na.value = "grey50",
-  guide = "colourbar",
-  aesthetics = "fill"
-) +
+sample_after_immuno %>% 
+  ggplot(aes(x =interval_sample_immuno, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
   theme_minimal(base_size = 14) +
-  labs(x="Time from Blood Collection to Immunotherapy (in days)",
+  labs(x="Time from Blood Collection to Immunotherapy (in days)", 
        y="Number of Patient",
-       caption = "Each bar represents 100 days") +
-  facet_zoom(ylim = c(0, 10), zoom.size = 1)
+       caption = "Each bar represents 100 days")
 
 sample_after_rad <- breast_dna2 %>%
   filter(seq_sample_rad == "Yes") %>%
@@ -872,29 +846,20 @@ sample_after_rad <- breast_dna2 %>%
            abs(interval(start = specimen_collection_date, end = radiation_start_date_1) /
                  duration(n = 1, units = "days"))) %>%
   arrange(deidentified_patient_id, interval_sample_rad) %>%
-  distinct(deidentified_patient_id, .keep_all = TRUE)
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, interval_sample_rad, everything())
 
-p <- qplot(x =interval_sample_rad, data=subset(sample_after_rad), fill=..count..,
-           geom="histogram",
-           binwidth = 100,
-)
-p + scale_fill_viridis_c(
-  alpha = 1,
-  begin = 0,
-  end = 1,
-  direction = 1,
-  option = "A",
-  values = NULL,
-  space = "Lab",
-  na.value = "grey50",
-  guide = "colourbar",
-  aesthetics = "fill"
-) +
+sample_after_rad %>% 
+  ggplot(aes(x =interval_sample_rad, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
   theme_minimal(base_size = 14) +
-  labs(x="Time from Blood Collection to Radiotherapy (in days)",
+  labs(x="Time from Blood Collection to Radiotherapy (in days)", 
        y="Number of Patient",
-       caption = "Each bar represents 100 days") +
-  facet_zoom(ylim = c(0, 5), zoom.size = 1)
+       caption = "Each bar represents 100 days")
 
 sample_after <- bind_rows(sample_after_chemo, sample_after_hormone, sample_after_immuno, sample_after_rad)
 
@@ -1078,7 +1043,7 @@ breast_dna3 <-
   # purrr::keep(~!all(is.na(.))) %>%
   # select(deidentified_patient_id, ends_with("_1")) %>%
   # `colnames<-`(str_remove(colnames(.), "_1"))
-# write_rds(breast_dna, "breast_dna.rds")
+
 
 breast_info <- 
   breast_info %>% ##################################################### Fix bug
