@@ -9,7 +9,7 @@ output:
     toc_collapsed: false
     theme: united
     highlight: pygments
-    df_print: paged
+    df_print: kable
 editor_options: 
   chunk_output_type: console
 ---
@@ -25,6 +25,22 @@ table {
     margin-top: 10px;
     margin-bottom: 25px !important;
 }
+
+<!-- table { -->
+<!--   <!-- margin: auto; --> -->
+<!--   border-top: 1px solid #666; -->
+<!--   border-bottom: 1px solid #666; -->
+<!-- } -->
+<!-- table thead th { border-bottom: 1px solid #ddd; } -->
+th, td { padding: 5px; }
+
+<!-- tr:nth-of-type(3n+0) { -->
+<!--   background: red; -->
+<!-- } -->
+<!-- tr:5:nth-child(0n+1) { -->
+<!--   background: red; -->
+<!-- } -->
+
 </style>
 
 ```{r setup, include=FALSE}
@@ -332,23 +348,43 @@ breast_dna2 <- breast_dna1 %>%
   mutate(had_good_sample_chemo = case_when(
     blood_bf_chemo == "Yes"              ~ "Yes"
   )) %>% 
+  group_by(deidentified_patient_id, had_good_sample_chemo) %>% 
+  mutate(closest_chemo_presample_date = case_when(
+    had_good_sample_chemo == "Yes"       ~ last(specimen_collection_date)
+  )) %>% 
   group_by(deidentified_patient_id) %>% 
-  fill(had_good_sample_chemo, .direction = "updown") %>% 
+  fill(had_good_sample_chemo, closest_chemo_presample_date, .direction = "updown") %>% 
   mutate(seq_sample_chemo = case_when(
     had_good_sample_chemo == "Yes" &
       blood_bf_chemo == "No" ~ "Yes",
     TRUE ~ "No"
   )) %>% 
+  mutate(time_prechemo_seq_sample = case_when(
+    seq_sample_chemo == "Yes"        ~ (
+      interval(start = closest_chemo_presample_date, end = specimen_collection_date) / 
+        duration(n= 1, units = "days")
+  ))) %>% 
+  
   mutate(had_good_sample_hormone = case_when(
     blood_bf_hormone == "Yes"              ~ "Yes"
   )) %>% 
+  group_by(deidentified_patient_id, had_good_sample_hormone) %>% 
+  mutate(closest_hormone_presample_date = case_when(
+    had_good_sample_hormone == "Yes"       ~ last(specimen_collection_date)
+  )) %>% 
   group_by(deidentified_patient_id) %>% 
-  fill(had_good_sample_hormone, .direction = "updown") %>% 
+  fill(had_good_sample_hormone, closest_hormone_presample_date, .direction = "updown") %>% 
   mutate(seq_sample_hormone = case_when(
     had_good_sample_hormone == "Yes" &
       blood_bf_hormone == "No" ~ "Yes",
     TRUE ~ "No"
   )) %>% 
+  mutate(time_prehormone_seq_sample = case_when(
+    seq_sample_hormone == "Yes"        ~ (
+      interval(start = closest_hormone_presample_date, end = specimen_collection_date) /
+        duration(n = 1, units = "days")
+  ))) %>% 
+  
   mutate(had_good_sample_immuno = case_when(
     blood_bf_immuno == "Yes"              ~ "Yes"
   )) %>% 
@@ -362,15 +398,29 @@ breast_dna2 <- breast_dna1 %>%
   mutate(had_good_sample_rad = case_when(
     blood_bf_rad == "Yes"              ~ "Yes"
   )) %>% 
+  group_by(deidentified_patient_id, had_good_sample_rad) %>% 
+  mutate(closest_rad_presample_date = case_when(
+    had_good_sample_rad == "Yes"       ~ last(specimen_collection_date)
+  )) %>% 
   group_by(deidentified_patient_id) %>% 
-  fill(had_good_sample_rad, .direction = "updown") %>% 
+  fill(had_good_sample_rad, closest_rad_presample_date, .direction = "updown") %>% 
   mutate(seq_sample_rad = case_when(
     had_good_sample_rad == "Yes" &
       blood_bf_rad == "No" ~ "Yes",
     TRUE ~ "No"
   )) %>% 
+  mutate(time_prerad_seq_sample = case_when(
+    seq_sample_rad == "Yes"        ~ (
+      interval(start = closest_rad_presample_date, end = specimen_collection_date) / 
+        duration(n= 1, units = "days")
+  ))) %>% 
+  
   mutate(had_good_sample_chemo_rad = case_when(
     blood_bf_chemo_rad == "Yes"              ~ "Yes"
+  )) %>% 
+  group_by(deidentified_patient_id, had_good_sample_chemo) %>% 
+  mutate(closest_chemo_presample_date = case_when(
+    had_good_sample_chemo == "Yes"       ~ last(specimen_collection_date)
   )) %>% 
   group_by(deidentified_patient_id) %>% 
   fill(had_good_sample_chemo_rad, .direction = "updown") %>% 
@@ -389,7 +439,12 @@ breast_dna2 <- breast_dna1 %>%
       blood_bf_treatment == "No" ~ "Yes",
     TRUE ~ "No"
   )) %>% 
-  ungroup()
+  ungroup() %>% 
+  select(deidentified_patient_id, specimen_collection_date, 
+         blood_bf_chemo, closest_chemo_presample_date,
+         "had_good_sample_chemo", "seq_sample_chemo",
+         time_prechemo_seq_sample,
+         everything())
 ```
 
 ## Samples after treatments
@@ -618,11 +673,171 @@ tbl_merge(list(tbl_s1, tbl_s2)) %>%
 
 ```
 
+# Time between samples
+I calculated the time between the closest pre treatment sample from treatment date (would "reference" sample would be a good term?) and the post treatment samples (I call them "sequential" samples)  
 
+## Chemotherapy
+```{r, fig.width=12, fig.height=9}
+breast_dna2 %>% 
+  filter(!is.na(time_prechemo_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  ggplot(aes(x =time_prechemo_seq_sample, fill = sequential_sample_count
+             ))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Chemotherapy Pre Treatment Sample to \nPost Treatment Sample (in days)", 
+       y="Number of Patient",
+       caption = "Each bar represents 30 days")
 
+# knitr::kable(breast_dna2 %>% 
+#   filter(!is.na(time_prechemo_seq_sample)) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+#   ungroup() %>% 
+#   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+#   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prechemo_seq_sample), align = "ccl")# %>%
+  # kableExtra::kable_styling() %>%
+  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
+df <- breast_dna2 %>% 
+  filter(!is.na(time_prechemo_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+  select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prechemo_seq_sample)
 
+color.me1 <- which((df$ID %% 2)  == 1)
+# color.me <- which(df$`number post treatment sample` == 2)
+# color.me.bold <- which((df$ID %% 2)  == 1)
+color.me.bold <- which(df$`number post treatment sample` == 1)
+```
 
+I recoded a dummy ID for each patient, I used strips to visualize them better.  
+This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient.
+```{r}
+df %>% 
+  kableExtra::kable(booktabs = T, align = "ccl") %>%
+  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # kableExtra::row_spec(color.me, background = "#eee") %>%
+  kableExtra::row_spec(color.me1, background = "#eee") %>%
+  kableExtra::row_spec(color.me.bold, color = "red")
+```
+<br>
+
+## Hormonetherapy
+```{r, fig.width=12, fig.height=9}
+breast_dna2 %>% 
+  filter(!is.na(time_prehormone_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  ggplot(aes(x =time_prehormone_seq_sample, fill = sequential_sample_count
+             ))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Hormonetherapy Pre Treatment Sample to \nPost Treatment Sample (in days)", 
+       y="Number of Patient",
+       caption = "Each bar represents 30 days")
+
+# knitr::kable(breast_dna2 %>% 
+#   filter(!is.na(time_prehormone_seq_sample)) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+#   ungroup() %>% 
+#   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+#   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prehormone_seq_sample), align = "ccl")# %>%
+  # kableExtra::kable_styling() %>%
+  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+
+df <- breast_dna2 %>% 
+  filter(!is.na(time_prehormone_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+  select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prehormone_seq_sample)
+
+color.me1 <- which((df$ID %% 2)  == 1)
+# color.me <- which(df$`number post treatment sample` == 2)
+# color.me.bold <- which((df$ID %% 2)  == 1)
+color.me.bold <- which(df$`number post treatment sample` == 1)
+```
+
+I recoded a dummy ID for each patient, I used strips to visualize them better.  
+This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient.
+```{r}
+df %>% 
+  kableExtra::kable(booktabs = T, align = "ccl") %>%
+  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # kableExtra::row_spec(color.me, background = "#eee") %>%
+  kableExtra::row_spec(color.me1, background = "#eee") %>%
+  kableExtra::row_spec(color.me.bold, color = "red")
+```
+<br>
+
+## Radiotherapy
+```{r, fig.width=12, fig.height=9}
+breast_dna2 %>% 
+  filter(!is.na(time_prerad_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  ggplot(aes(x =time_prerad_seq_sample, fill = sequential_sample_count
+             ))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Radiotherapy Pre Treatment Sample to \nPost Treatment Sample (in days)", 
+       y="Number of Patient",
+       caption = "Each bar represents 30 days")
+
+# knitr::kable(breast_dna2 %>% 
+#   filter(!is.na(time_prerad_seq_sample)) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+#   ungroup() %>% 
+#   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+#   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prerad_seq_sample), align = "ccl")# %>%
+  # kableExtra::kable_styling() %>%
+  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+
+df <- breast_dna2 %>% 
+  filter(!is.na(time_prerad_seq_sample)) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  mutate(ID = dense_rank(deidentified_patient_id)) %>% 
+  select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prerad_seq_sample)
+
+color.me1 <- which((df$ID %% 2)  == 1)
+# color.me <- which(df$`number post treatment sample` == 2)
+# color.me.bold <- which((df$ID %% 2)  == 1)
+color.me.bold <- which(df$`number post treatment sample` == 1)
+```
+
+I recoded a dummy ID for each patient, I used strips to visualize them better.  
+This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient.
+```{r}
+df %>% 
+  kableExtra::kable(booktabs = T, align = "ccl") %>%
+  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # kableExtra::row_spec(color.me, background = "#eee") %>%
+  kableExtra::row_spec(color.me1, background = "#eee") %>%
+  kableExtra::row_spec(color.me.bold, color = "red")
+```
+<br>
+
+I think samples that are too far away from treatment start (6 month / years) might need to be excluded...  
+I could also look at if they got another treatment. Dummy example : If a patient had chemotherapy for 2 months and then let's say immunotherapy so do we want to include this patient if the sequential sample was collected during immunotherapy?  
+
+# Let me know if you need anything else!
+
+***
 
 
 
