@@ -466,7 +466,7 @@ Treatment <- full_join(chemot, hormonet, by = "mrn") %>%
     !is.na(chemotherapy_start_date_1) &
       !is.na(radiation_start_date_1) ~ "Yes"
   )) %>% 
-  mutate(had_treatment = case_when(
+  mutate(had_all_treatment = case_when(
     !is.na(chemotherapy_start_date_1) &
       !is.na(hormone_therapy_start_date_1) &
       !is.na(immunotherapy_start_date_1) &
@@ -478,18 +478,25 @@ write_rds(Treatment, "Treatment.rds")
 
 
 # DNA, clean and add same sample/same date on the same row
+table(breast_DNA$sample_type)
+
 breast_dna <- breast_DNA %>% 
-  filter(derived_tissue_type == "Blood",sample_type != "WBC/RBC") %>% 
-  mutate(mrn = str_to_lower(mrn)) %>% 
-  select(mrn, sample_family_id_sf, sample_id,
+  filter(derived_tissue_type == "Blood", str_detect(sample_type, "Buffy Coat|Genomic DNA")) %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
+  select(mrn, deidentified_patient_id, sample_family_id_sf, sample_id,
          specimen_collection_date) %>%
-  mutate(specimen_collection_date = as.Date(specimen_collection_date, format = "%Y-%M-%d")) %>% 
+  
+  mutate(specimen_collection_date = as.Date(specimen_collection_date, 
+                                            format = "%Y-%M-%d", 
+                                            origin = "1899-12-30")) %>% 
   arrange(mrn, specimen_collection_date) %>% 
-  group_by(mrn, sample_family_id_sf, specimen_collection_date) %>% 
+  group_by(mrn, deidentified_patient_id, sample_family_id_sf, specimen_collection_date) %>% 
   summarise_at(vars(sample_id), str_c, collapse = "; ") %>%
   # separate(col = sample_id, paste("sample_id", 1:3, sep="_"), sep = "; ", extra = "drop", fill = "right")
-  ungroup() %>% 
-  left_join(breast_DNA)
+  ungroup() #%>% 
+  # left_join(., breast_DNA, 
+  #           by = c("mrn", "deidentified_patient_id"))
 
 # write_rds(breast_dna, "breast_dna.rds")
 
