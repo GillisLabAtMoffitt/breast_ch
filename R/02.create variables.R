@@ -1,3 +1,9 @@
+Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Global_data.rds")
+
+blood_patients <- Global_data %>% 
+  # filter to patients who have blood samples
+  filter(!is.na(specimen_collection_date))
+
 blood_patients <- blood_patients %>% 
   # create age
   # mutate(age_at_diagnosis = interval(start = date_of_birth, end = date_of_diagnosis)/
@@ -42,26 +48,7 @@ blood_patients <- blood_patients %>%
     TRUE                                                            ~ "No"
   ))
   
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 write_rds(blood_patients, "blood_patients.rds")
+
 
 # End create variables
