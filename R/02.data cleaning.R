@@ -527,7 +527,7 @@ breast_dna <- breast_DNA %>%
   # left_join(., breast_DNA, 
   #           by = c("mrn", "deidentified_patient_id"))
 
-# write_rds(breast_dna, "breast_dna.rds")
+write_rds(breast_dna, "breast_dna.rds")
 
 breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% 
   mutate(blood_bf_chemo = case_when(

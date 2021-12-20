@@ -89,8 +89,11 @@ We have `r length(unique(blood_patients$deidentified_patient_id))` unique breast
 
 ```{r}
 blood_patients %>% 
-  select("race_derived", "ethnicity_derived",
-         "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2") %>% 
+  select("race_derived", "ethnicity_derived"#,
+         # "class_of_case", 
+         # "clinical_tnm_group_stage", 
+         # "combinations_of_er_pr_and_her2"
+         ) %>% 
   tbl_summary()
 ```
 
@@ -187,8 +190,9 @@ blood_bf_treat <- blood_patients %>%
 
 ```{r}
 blood_bf_treat %>% 
-  select("race_derived", "ethnicity_derived",
-         "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2") %>% 
+  select("race_derived", "ethnicity_derived"#,
+         # "class_of_case", "clinical_tnm_group_stage", "combinations_of_er_pr_and_her2"
+         ) %>% 
   tbl_summary()
 
 
