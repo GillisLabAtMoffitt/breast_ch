@@ -55,7 +55,7 @@ Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Globa
 
 ```{r, out.width='100%'}
 venn.diagram(
-  x = list(Global_data$deidentified_patient_id, blood_patients$deidentified_patient_id),
+  x = list(Global_data$mrn, blood_patients$mrn),
   category.names = c("Clinical data" , "Blood samples"),
   filename = 'Patients with blood samples.png',
   output=TRUE,
