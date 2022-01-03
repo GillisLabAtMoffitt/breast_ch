@@ -30,7 +30,9 @@ check <- Chemot %>%
   filter(str_detect(chemotherapy_type, "contraindicated|none, not planned|refused|dc only")) %>% 
   arrange(chemotherapy_type)
 write_csv(check, paste0(path, "/sanity check/chemo contraindicated|none, not planned|refused patients.csv"))
-
+# write_csv(check %>% filter(str_detect(mrn, "271414|621813|772767|309843|748868")), paste0(path, "/sanity check/chemo contraindicated.csv"))
+# write_csv(check %>% filter(str_detect(mrn, "571063|543238|1045598|729266|597917")), paste0(path, "/sanity check/chemo none, not planned.csv"))
+# write_csv(check %>% filter(str_detect(mrn, "290870|307280|1034774|152952|176871")), paste0(path, "/sanity check/chemo refused.csv"))
 
 
 Chemot1 <- Chemot %>% 
@@ -508,7 +510,7 @@ breast_dna <- breast_DNA %>%
   mutate_at(c("mrn"), ~str_to_lower(.)) %>% 
   mutate(across(contains("date"), ~ as.Date(as.numeric(.), 
                                             origin = "1899-12-30"))) %>% 
-  filter(derived_tissue_type == "blood", str_detect(sample_type, "buffy coat|genomic dna")) %>% 
+  filter(derived_tissue_type == "blood", str_detect(sample_type, "buffy coat|genomic dna|unprocessed liquid tissue|mnc less cd138+|mnc$|dna in prep")) %>% 
   mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
   select(mrn, deidentified_patient_id, sample_family_id_sf, sample_id,
          specimen_collection_date) %>%
