@@ -508,7 +508,7 @@ breast_dna <- breast_DNA %>%
   mutate_at(c("mrn"), ~str_to_lower(.)) %>% 
   mutate(across(contains("date"), ~ as.Date(as.numeric(.), 
                                             origin = "1899-12-30"))) %>% 
-  filter(derived_tissue_type == "blood", str_detect(sample_type, "buffy coat|genomic dna")) %>% 
+  filter(derived_tissue_type == "blood", str_detect(sample_type, "buffy coat|genomic dna|unprocessed liquid tissue|mnc less cd138+|mnc$|dna in prep")) %>% 
   mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
   select(mrn, deidentified_patient_id, sample_family_id_sf, sample_id,
          specimen_collection_date) %>%
