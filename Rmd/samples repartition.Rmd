@@ -65,9 +65,9 @@ library(viridis)
 ```
 
 ```{r}
-breast_dna <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/breast_dna.rds")
-# blood_patients <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
-Treatment <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment.rds")
+# breast_dna <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/breast_dna.rds")
+blood_patients <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
+# Treatment <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment.rds")
 ```
 
 # Repartition of Samples Before and After Treatment
@@ -75,7 +75,8 @@ Treatment <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatme
 As we talked last week, I included the sample closest to treatment when multiple samples were available BEFORE treatment and I included all the samples AFTER treatment.
 
 ```{r}
-breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% 
+breast_dna1 <- blood_patients %>% 
+# breast_dna1 <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% 
   mutate(blood_bf_chemo = case_when(
     specimen_collection_date <= chemotherapy_start_date_1                ~ "Yes",
     specimen_collection_date > chemotherapy_start_date_1                 ~ "No",
@@ -448,7 +449,7 @@ breast_dna2 <- breast_dna1 %>%
 ```
 
 ## Samples after treatments
-```{r}
+```{r Samples after treatments}
 sample_after_chemo <- breast_dna2 %>%
   filter(seq_sample_chemo == "Yes") %>%
   mutate(interval_sample_chemo =
@@ -824,7 +825,7 @@ color.me.bold <- which(df$`number post treatment sample` == 1)
 
 I recoded a dummy ID for each patient, I used strips to visualize them better.  
 This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient.
-```{r}
+```{r table samples}
 df %>% 
   kableExtra::kable(booktabs = T, align = "ccl") %>%
   # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
