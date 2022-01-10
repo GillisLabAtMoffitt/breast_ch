@@ -46,7 +46,17 @@ blood_patients <- blood_patients %>%
       specimen_collection_date <= (radiation_start_date_1 + days(30))
     ~ "Yes",
     TRUE                                                            ~ "No"
-  ))
+  )) %>% 
+  # Create deidentify IDs
+  mutate(rad = "breast_stydy_") %>%
+  group_by(mrn) %>% 
+  mutate(id = cur_group_id()) %>%
+  ungroup() %>%
+  mutate(zero = 6 - nchar(id)) %>%
+  mutate(ii = stringi::stri_dup("0", zero)) %>%
+  select(c(rad, ii, id, mrn, everything())) %>%
+  unite(deidentified_patient_id, rad:id, sep = "") %>% 
+  select(c(deidentified_patient_id, mrn, everything(), -zero))
   
 write_rds(blood_patients, "blood_patients.rds")
 
