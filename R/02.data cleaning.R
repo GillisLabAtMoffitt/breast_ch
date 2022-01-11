@@ -1480,9 +1480,9 @@ write_rds(Treatment, "Treatment.rds")
 
 ################################################################################# III ### Merge data
 # Get a data with 1 sample per row. Each sample row will have the treatments and demo info
-Global_data <- full_join(Demographic, breast_dna, by = "mrn") %>% 
-  full_join(., breast_info1, by = c("mrn", "date_of_birth")) %>% # I checked the date of birth
-  full_join(., Treatment, by = "mrn")# %>% 
+Global_data <- #full_join(Demographic, breast_dna, by = "mrn") %>% 
+  # full_join(., breast_info1, by = c("mrn", "date_of_birth")) %>% # I checked the date of birth
+  left_join(breast_patients, Treatment, by = "mrn")# %>% 
   # full_join(., chemot, by = "mrn") %>% 
   # full_join(., hormonet, by = "mrn") %>% 
   # full_join(., immnunot, by = "mrn") %>% 

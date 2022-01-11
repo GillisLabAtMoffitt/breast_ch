@@ -48,7 +48,7 @@ blood_patients <- blood_patients %>%
     TRUE                                                            ~ "No"
   )) %>% 
   # Create deidentify IDs
-  mutate(rad = "breast_stydy_") %>%
+  mutate(rad = "breast_study_") %>%
   group_by(mrn) %>% 
   mutate(id = cur_group_id()) %>%
   ungroup() %>%
