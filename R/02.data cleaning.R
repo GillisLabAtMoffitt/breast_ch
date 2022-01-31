@@ -7,13 +7,14 @@ breast_dna <- breast_DNA %>%
   mutate(mrn = as.character(mrn),
          mrn = coalesce(mrn, party_id)) %>% 
   mutate_at(c("mrn"), ~str_to_lower(.)) %>% 
-  # mutate(across(where(is.character), ~str_to_lower(.))) %>% 
-  filter(collection_site_tissue_type == "Blood", !str_detect(sample_type, "WBC/RBC")) %>% 
-  select(mrn, party_id, sample_family_id_sf, sample_id,
+  filter(collection_site_tissue_type == "Blood", 
+         str_detect(sample_type, "Buffy|Genomic|Unprocessed|CD138|MNC$")) %>% 
+  mutate(across(where(is.character), ~str_to_sentence(.))) %>% 
+  select(mrn, party_id, sample_family_id, sample_id,
          specimen_collection_date) %>%
   # add same sample/same date on the same row
   arrange(mrn, specimen_collection_date) %>% 
-  group_by(mrn, party_id, sample_family_id_sf, specimen_collection_date) %>% 
+  group_by(mrn, party_id, sample_family_id, specimen_collection_date) %>% 
   summarise_at(vars(sample_id), str_c, collapse = "; ") %>%
   # separate(col = sample_id, paste("sample_id", 1:3, sep="_"), sep = "; ", extra = "drop", fill = "right")
   ungroup()
@@ -24,16 +25,16 @@ write_rds(breast_dna, "breast_dna.rds")
 # Cancer Characteristics
 breast_info <- 
   breast_info %>%
-  mutate(mrn = as.character(mrn)#,
-         #mrn = coalesce(mrn, party_id)
+  mutate(mrn = as.character(mrn),
+         mrn = coalesce(mrn, party_id)
          ) %>% 
   mutate(across(where(is.character), ~str_to_sentence(.))) %>% 
-  filter(str_detect(primary_site_group, "Breast")) %>% 
+  filter(str_detect(primary_site_group, "Breast")) %>%
   distinct(mrn, date_of_diagnosis, .keep_all = TRUE) %>% 
   mutate_at("date_of_diagnosis", ~ as.Date(as.numeric(.), 
                                             origin = "1899-12-30")) %>%
   arrange(mrn, date_of_diagnosis) %>% 
-  select(-c(group_name, approached_tcc_consent_oncore, is_active_tcc))
+  select(-c(group_name))
 
 # breast_info1 <- dcast(setDT(breast_info), mrn+date_of_birth ~ rowid(mrn),
 #                       value.var = c(
@@ -51,17 +52,17 @@ breast_info <-
 Demographic <- Demographic %>%
   mutate(mrn = as.character(mrn),
          mrn = coalesce(mrn, party_id)) %>% 
-  mutate(across(where(is.character), ~str_to_sentence(.)))
+  mutate(across(where(is.character), ~str_to_sentence(.))) %>% 
+  select(-c(group_name))
 
 
 ################################################################################# III ### Merge data
 breast_patients <- breast_dna %>% 
   # Merge with Cancer Char for patients with samples available
-  left_join(., breast_info, by = "mrn") %>% 
+  left_join(., breast_info, by = c("mrn", "party_id")) %>% 
   # Merge with Demographic for patients with samples available
-  left_join(., Demographic %>% 
-              select(-group_name, -approached_tcc_consent_oncore), 
-            by = "mrn")
+  left_join(., Demographic, 
+            c("mrn", "party_id", "date_of_birth"))
 
 breast_patients_id <- paste0(breast_patients$mrn, collapse = "|")
 
@@ -74,8 +75,9 @@ Chemot <- Chemot %>%
   # Limit to Breast cancer patients
   filter(str_detect(mrn, breast_patients_id)) %>% 
   # Transform number to date and 12:00:00 am character as NA
-  mutate(across(ends_with("date"), ~ as.Date(as.numeric(.), 
-                                             origin = "1899-12-30"))) %>% 
+  mutate(chemotherapy_end_date = as.Date(as.numeric(chemotherapy_end_date), 
+                                             origin = "1899-12-30")) %>% 
+  mutate(chemotherapy_start_date = as.Date(chemotherapy_start_date)) %>% 
   # Fix the 2300 dates
   mutate(chemotherapy_start_date = case_when(
     str_detect(chemotherapy_start_date, "2300")                   ~ NA_Date_,
@@ -83,7 +85,7 @@ Chemot <- Chemot %>%
   )) %>% 
   mutate(across(where(is.character), ~str_to_lower(.))) %>% 
   # Remove no chemo given in chemotherapy_drug
-  filter(chemotherapy_drug != "no chemo given" | is.na(chemotherapy_drug)) %>% 
+  filter(chemotherapy_drug != "no chemo given") %>% 
   # Remove NA in both drug name and date
   filter_at(vars(chemotherapy_drug, chemotherapy_start_date,
                  chemotherapy_end_date), any_vars(!is.na(.)))
@@ -116,14 +118,13 @@ Chemot1 <- Chemot %>%
   # Make it easier to not have na for future filtering, rescue the ones with a drug name
   mutate(chemotherapy_completion_status_first_course = case_when(
     !is.na(chemotherapy_drug) |
-      !is.na(chemotherapy_start_date) | 
-      chemotherapy_type == "unknown; dc only"          
+      !is.na(chemotherapy_start_date)         
     ~ coalesce(chemotherapy_completion_status_first_course, "chemo given")
   ))
 
-# check <- Chemot1 %>% 
-#   filter(str_detect(chemotherapy_start_date, "12:00:00 am"))
-# write_csv(check, paste0(path, "/sanity check/chemo patients with 12:00:00 am dates.csv"))
+check <- Chemot1 %>%
+  filter(str_detect(chemotherapy_completion_status_first_course, "no chem"))
+write_csv(check, paste0(path, "/sanity check/chemo patients no chemo given.csv"))
 
 
 Chemot1 <- Chemot1 %>% 
@@ -963,7 +964,7 @@ write_rds(Treatment, "Treatment.rds")
 # #   specimen_collection_date > (treatment_start_date + days(30))   ~ treatment_line,
 # #   TRUE                                                            ~ NA_character_
 # # )) %>% 
-# # distinct(mrn, sample_family_id_sf, sample_id,
+# # distinct(mrn, sample_family_id, sample_id,
 # #          specimen_collection_date, )
 # arrange(mrn, specimen_collection_date, blood_bf_treatment) %>% 
 #   group_by(mrn) %>% 
@@ -1305,7 +1306,7 @@ write_rds(Treatment, "Treatment.rds")
 
 # breast_dna2 <-
 #   dcast(setDT(breast_dna1), mrn ~ rowid(mrn),
-#         value.var = c("sample_family_id_sf", 
+#         value.var = c("sample_family_id", 
 #                       "sample_id",
 #                       "specimen_collection_date", 
 #                       "blood_bf_chemo", "blood_bf_hormone", 
@@ -1423,7 +1424,7 @@ write_rds(Treatment, "Treatment.rds")
 
 # breast_dna2 <- 
 #   dcast(setDT(breast_dna1),
-#         mrn+sample_family_id_sf+sample_id+specimen_collection_date+blood_bf_treatment+blood_bf_30_days_treatment ~ 
+#         mrn+sample_family_id+sample_id+specimen_collection_date+blood_bf_treatment+blood_bf_30_days_treatment ~ 
 #           rowid(mrn),
 #         value.var = c(
 #                       "treatment_bf_blood", "treatment_bf_30days_blood", 
@@ -1453,7 +1454,7 @@ write_rds(Treatment, "Treatment.rds")
 # 
 # breast_dna3 <-
 #   dcast(setDT(breast_dna2), mrn ~ rowid(mrn),
-#         value.var = c("sample_family_id_sf", 
+#         value.var = c("sample_family_id", 
 #                       "sample_id",
 #                       "specimen_collection_date", 
 #                       "blood_bf_treatment", "blood_bf_30_days_treatment", 
@@ -1464,7 +1465,7 @@ write_rds(Treatment, "Treatment.rds")
 
 # breast_dna3 <- breast_dna2 %>% 
 #   group_by(mrn) %>% 
-#   summarise_at(vars(sample_family_id_sf, specimen_collection_date, blood_bf_treatment, blood_bf_30days_treatment, blood_after_treatment, blood_after_30days_treatment), paste, collapse = "/ ") 
+#   summarise_at(vars(sample_family_id, specimen_collection_date, blood_bf_treatment, blood_bf_30days_treatment, blood_after_treatment, blood_after_30days_treatment), paste, collapse = "/ ") 
 
 
 # purrr::keep(~!all(is.na(.))) %>%
