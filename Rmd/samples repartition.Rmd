@@ -62,6 +62,7 @@ library(VennDiagram)
 library(lubridate)
 library(gtsummary)
 library(viridis)
+library(ggforce)
 ```
 
 ```{r}
@@ -71,9 +72,9 @@ blood_patients <-
 # Treatment <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment.rds")
 ```
 
-# Repartition of Samples Before and After Treatment
+# Repartition of Samples Before and After Treatments
 
-We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy.
+We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments.  
 - I included the sample BEFORE and CLOSEST to treatment 
 - I included ALL the samples AFTER treatment.
 
@@ -228,136 +229,10 @@ arrange(mrn, deidentified_patient_id) %>%
          "blood_bf_treatment", everything())
 ```
 
-<!-- ## Samples before treatment -->
 
-```{r}
-# sample_before_chemo <- blood_patients %>% 
-#   filter(blood_bf_chemo == "Yes") %>% 
-#   mutate(interval_presample_chemo = 
-#            abs(interval(start = specimen_collection_date, end = chemotherapy_start_date_1) /
-#            duration(n = 1, units = "days"))) %>% 
-#   arrange(deidentified_patient_id, interval_presample_chemo) %>% 
-#   distinct(deidentified_patient_id, .keep_all = TRUE)
-# 
-# library(ggforce)
-# p <- qplot(x =interval_presample_chemo, data=subset(sample_before_chemo), fill=..count.., 
-#            geom="histogram", 
-#            binwidth = 100,
-# ) 
-# p + scale_fill_viridis_c(
-#   alpha = 1,
-#   begin = 0,
-#   end = 1,
-#   direction = 1,
-#   option = "A",
-#   values = NULL,
-#   space = "Lab",
-#   na.value = "grey50",
-#   guide = "colourbar",
-#   aesthetics = "fill"
-# ) +
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Chemotherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days, left plot is zoomed in") +
-#   facet_zoom(ylim = c(0, 10), zoom.size = 1)
-
-# sample_before_hormone <- blood_patients %>% 
-#   filter(blood_bf_hormone == "Yes") %>% 
-#   mutate(interval_presample_hormone = 
-#            abs(interval(start = specimen_collection_date, end = hormone_therapy_start_date_1) /
-#                  duration(n = 1, units = "days"))) %>% 
-#   arrange(deidentified_patient_id, interval_presample_hormone) %>% 
-#   distinct(deidentified_patient_id, .keep_all = TRUE)
-# 
-# p <- qplot(x =interval_presample_hormone, data=subset(sample_before_hormone), fill=..count.., 
-#            geom="histogram", 
-#            binwidth = 100,
-# ) 
-# p + scale_fill_viridis_c(
-#   alpha = 1,
-#   begin = 0,
-#   end = 1,
-#   direction = 1,
-#   option = "A",
-#   values = NULL,
-#   space = "Lab",
-#   na.value = "grey50",
-#   guide = "colourbar",
-#   aesthetics = "fill"
-# ) +
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Hormonetherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days, left plot is zoomed in") +
-#   facet_zoom(ylim = c(0, 10), zoom.size = 1)
-
-# sample_before_immuno <- blood_patients %>% 
-#   filter(blood_bf_immuno == "Yes") %>% 
-#   mutate(interval_presample_immuno = 
-#            abs(interval(start = specimen_collection_date, end = immunotherapy_start_date_1) /
-#                  duration(n = 1, units = "days"))) %>% 
-#   arrange(deidentified_patient_id, interval_presample_immuno) %>% 
-#   distinct(deidentified_patient_id, .keep_all = TRUE)
-# 
-# p <- qplot(x =interval_presample_immuno, data=subset(sample_before_immuno), fill=..count.., 
-#            geom="histogram", 
-#            binwidth = 100,
-# ) 
-# p + scale_fill_viridis_c(
-#   alpha = 1,
-#   begin = 0,
-#   end = 1,
-#   direction = 1,
-#   option = "A",
-#   values = NULL,
-#   space = "Lab",
-#   na.value = "grey50",
-#   guide = "colourbar",
-#   aesthetics = "fill"
-# ) +
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Immunotherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days, left plot is zoomed in") +
-#   facet_zoom(ylim = c(0, 10), zoom.size = 1)
-# 
-# sample_before_rad <- blood_patients %>% 
-#   filter(blood_bf_rad == "Yes") %>% 
-#   mutate(interval_presample_rad = 
-#            abs(interval(start = specimen_collection_date, end = radiation_start_date_1) /
-#                  duration(n = 1, units = "days"))) %>% 
-#   arrange(deidentified_patient_id, interval_presample_rad) %>% 
-#   distinct(deidentified_patient_id, .keep_all = TRUE)
-# 
-# p <- qplot(x =interval_presample_rad, data=subset(sample_before_rad), fill=..count.., 
-#            geom="histogram", 
-#            binwidth = 100,
-# ) 
-# p + scale_fill_viridis_c(
-#   alpha = 1,
-#   begin = 0,
-#   end = 1,
-#   direction = 1,
-#   option = "A",
-#   values = NULL,
-#   space = "Lab",
-#   na.value = "grey50",
-#   guide = "colourbar",
-#   aesthetics = "fill"
-# ) +
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Radiotherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days, left plot is zoomed in") +
-#   facet_zoom(ylim = c(0, 5), zoom.size = 1)
-
-# sample_before <- bind_rows(sample_before_chemo, sample_before_hormone, sample_before_immuno, sample_before_rad)
-```
-
-
-```{r}
+```{r code pre and sequential}
 blood_patients2 <- blood_patients %>% 
+  ###### Chemo samples ----
   mutate(had_good_sample_chemo = case_when(
     blood_bf_chemo == "Yes"                    ~ "Yes"
   )) %>%
@@ -373,14 +248,17 @@ blood_patients2 <- blood_patients %>%
   mutate(presample_id_chemo = case_when(
     !is.na(interval_presample_chemo)       ~ sample_id
   )) %>% 
+  mutate(presample_date_chemo = case_when(
+    !is.na(presample_id_chemo)                                     ~ specimen_collection_date
+  )) %>% 
   
   # Find sequential samples
-  mutate(presample_within_limits = had_good_sample_chemo) %>% 
+  mutate(presample_chemo_within_limits = had_good_sample_chemo) %>% 
   group_by(deidentified_patient_id) %>%
-  fill(presample_within_limits, #interval_presample_chemo,
+  fill(presample_chemo_within_limits, #interval_presample_chemo,
        closest_chemo_presample_date, .direction = "updown") %>%
   mutate(seq_sample_chemo = case_when(
-    presample_within_limits == "Yes" &
+    presample_chemo_within_limits == "Yes" &
       blood_bf_chemo == "No" &
       specimen_collection_date > chemotherapy_start_date_1 &
       (specimen_collection_date <= radiation_start_date_1 |
@@ -390,16 +268,25 @@ blood_patients2 <- blood_patients %>%
   mutate(seqsample_id_chemo = case_when(
     seq_sample_chemo == "Yes"                                       ~ sample_id
   )) %>% 
+  mutate(seqsample_date_chemo = case_when(
+    !is.na(seqsample_id_chemo)                                     ~ specimen_collection_date
+  )) %>% 
+  mutate(have_good_seqsample_chemo = case_when(
+    seq_sample_chemo == "Yes"                                       ~ "Yes"
+  )) %>% 
+  fill(have_good_seqsample_chemo, .direction = "updown") %>% 
   mutate(time_chemo_seqsample = case_when(
     seq_sample_chemo == "Yes"        ~ (
       interval(start = chemotherapy_start_date_1, end = specimen_collection_date) /
         duration(n= 1, units = "days")
     ))) %>%
-  mutate(interval_prepost_sample_chemo =
-           abs(interval(start = closest_chemo_presample_date, end = specimen_collection_date) /
-                 duration(n = 1, units = "days"))) %>%
+  mutate(interval_prepost_sample_chemo = case_when(
+    !is.na(seqsample_id_chemo)                                     ~
+      abs(interval(start = closest_chemo_presample_date, end = specimen_collection_date) /
+                 duration(n = 1, units = "days"))
+  )) %>%
   
-    # ###################
+  ###### Rad samples ----
   mutate(had_good_sample_rad = case_when(
     blood_bf_rad == "Yes"              ~ "Yes"
   )) %>%
@@ -407,20 +294,41 @@ blood_patients2 <- blood_patients %>%
   mutate(closest_rad_presample_date = case_when(
     had_good_sample_rad == "Yes"       ~ last(specimen_collection_date)
   )) %>%
-  mutate(interval_presample_rad =
-           abs(interval(start = closest_rad_presample_date, end = radiation_start_date_1) /
-                 duration(n = 1, units = "days"))) %>%
+  mutate(interval_presample_rad = case_when(
+    closest_rad_presample_date == specimen_collection_date  ~ 
+      abs(interval(start = closest_rad_presample_date, end = radiation_start_date_1) /
+                 duration(n = 1, units = "days"))
+  )) %>%
+  mutate(presample_id_rad = case_when(
+    !is.na(interval_presample_rad)                           ~ sample_id
+  )) %>% 
+  mutate(presample_date_rad = case_when(
+    !is.na(presample_id_rad)                                     ~ specimen_collection_date
+  )) %>% 
+  
+  # Find sequential samples
+  mutate(presample_rad_within_limits = had_good_sample_rad) %>%
   group_by(deidentified_patient_id) %>%
-  fill(had_good_sample_rad, interval_presample_rad,
+  fill(presample_rad_within_limits, #interval_presample_rad,
        closest_rad_presample_date, .direction = "updown") %>%
   mutate(seq_sample_rad = case_when(
-    had_good_sample_rad == "Yes" &
+    presample_rad_within_limits == "Yes" &
       blood_bf_rad == "No" &
       specimen_collection_date > radiation_start_date_1 &
       (specimen_collection_date <= chemotherapy_start_date_1 |
       is.na(chemotherapy_start_date_1))                              ~ "Yes",
     TRUE ~ "No"
   )) %>%
+  mutate(seqsample_id_rad = case_when(
+    seq_sample_rad == "Yes"                                          ~ sample_id
+  )) %>% 
+  mutate(seqsample_date_rad = case_when(
+    !is.na(seqsample_id_rad)                                     ~ specimen_collection_date
+  )) %>% 
+  mutate(have_good_seqsample_rad = case_when(
+    seq_sample_rad == "Yes"                                       ~ "Yes"
+  )) %>% 
+  fill(have_good_seqsample_rad, .direction = "updown") %>% 
   mutate(time_rad_seqsample = case_when(
     seq_sample_rad == "Yes"        ~ (
       interval(start = radiation_start_date_1, end = specimen_collection_date) /
@@ -484,46 +392,68 @@ blood_patients2 <- blood_patients %>%
   # 
 
   
-  ################### Variables for sample after C + Rad
+  ###### C + Rad samples ---- 
   mutate(had_good_sample_chemrad = case_when(
-    blood_bf_chemo_rad == "Yes"              ~ "Yes"
+    blood_bf_chemo_rad == "Yes"                              ~ "Yes"
   )) %>%
   group_by(deidentified_patient_id, had_good_sample_chemrad) %>%
   mutate(closest_chemorad_presample_date = case_when(
-    had_good_sample_chemrad == "Yes"       ~ last(specimen_collection_date)
+    had_good_sample_chemrad == "Yes"                         ~ last(specimen_collection_date)
   )) %>%
-  mutate(interval_presample_chemrad =
-           abs(interval(start = closest_chemorad_presample_date, end = first_chemo_rad_date) /
-                 duration(n = 1, units = "days"))) %>%
+  mutate(interval_presample_chemrad = case_when(
+    closest_chemorad_presample_date == specimen_collection_date  ~ 
+      abs(interval(start = closest_chemorad_presample_date, end = first_chemo_rad_date) /
+                 duration(n = 1, units = "days"))
+  )) %>%
+  mutate(presample_id_chemorad = case_when(
+    !is.na(interval_presample_chemrad)                       ~ sample_id
+  )) %>% 
+  mutate(presample_date_chemorad = case_when(
+    !is.na(presample_id_chemorad)                                     ~ specimen_collection_date
+  )) %>% 
+  
+  # Find sequential samples
+  mutate(presample_chemorad_within_limits = had_good_sample_chemrad) %>%
   group_by(deidentified_patient_id) %>%
-  fill(had_good_sample_chemrad, interval_presample_chemrad,
+  fill(presample_chemorad_within_limits, #interval_presample_chemrad,
        closest_chemorad_presample_date, .direction = "updown") %>%
   ungroup() %>% 
+  # Intermediate var for seq sample
   mutate(interval_chemo_rad =
            abs(interval(start = chemotherapy_start_date_1, end = radiation_start_date_1) /
         duration(n= 1, units = "days"))
         ) %>%
-  mutate(second_chemrad_date = first_chemo_rad_date + abs(interval_chemo_rad)) %>%
-  mutate(seq_sample_chemrad = case_when(
-    had_good_sample_chemrad == "Yes" &
+  mutate(second_chemorad_date = first_chemo_rad_date + abs(interval_chemo_rad)) %>%
+  mutate(seq_sample_chemorad = case_when(
+    presample_chemorad_within_limits == "Yes" &
       blood_bf_chemo_rad == "No" &
-      specimen_collection_date > second_chemrad_date               ~ "Yes",
-    TRUE                                                           ~ "No"
+      specimen_collection_date > second_chemorad_date        ~ "Yes",
+    TRUE                                                     ~ "No"
   )) %>%
-  # select(deidentified_patient_id, specimen_collection_date, had_good_sample_chemrad, closest_chemorad_presample_date, first_chemo_rad_date,second_chemrad_date,second_chemrad_date, seq_sample_chemrad, chemotherapy_start_date_1, radiation_start_date_1)
-  mutate(time_chemrad_seqsample = case_when(
-    seq_sample_chemrad == "Yes"        ~ (
-      interval(start = second_chemrad_date, end = specimen_collection_date) /
+  mutate(seqsample_id_chemorad = case_when(
+    seq_sample_chemorad == "Yes"                             ~ sample_id
+  )) %>% 
+  mutate(seqsample_date_chemorad = case_when(
+    !is.na(seqsample_id_chemorad)                                     ~ specimen_collection_date
+  )) %>% 
+  mutate(have_good_seqsample_chemorad = case_when(
+    seq_sample_chemorad == "Yes"                                       ~ "Yes"
+  )) %>% 
+  fill(have_good_seqsample_chemorad, .direction = "updown") %>% 
+  # select(deidentified_patient_id, specimen_collection_date, had_good_sample_chemrad, closest_chemorad_presample_date, first_chemo_rad_date,second_chemrad_date,second_chemrad_date, seq_sample_chemorad, chemotherapy_start_date_1, radiation_start_date_1)
+  mutate(time_chemorad_seqsample = case_when(
+    seq_sample_chemorad == "Yes"                             ~ (
+      interval(start = second_chemorad_date, end = specimen_collection_date) /
         duration(n= 1, units = "days")
   ))) %>%
-  mutate(interval_prepost_sample_chemrad =
+  mutate(interval_prepost_sample_chemorad =
            abs(interval(start = closest_chemorad_presample_date, end = specimen_collection_date) /
                  duration(n = 1, units = "days"))) %>%
 
-  ################### Variables for sample after C then Rad
+  ###### C then Rad sample ----
   mutate(had_good_sample_chemo_rad = case_when(
     blood_bf_chemo_rad == "Yes" &
-      chemotherapy_start_date_1 < radiation_start_date_1            ~ "Yes"
+      chemotherapy_start_date_1 < radiation_start_date_1     ~ "Yes"
   )) %>% 
   select(deidentified_patient_id, sample_id, specimen_collection_date, blood_bf_chemo_rad,
          chemotherapy_start_date_1, radiation_start_date_1, had_good_sample_chemo_rad, 
@@ -532,41 +462,64 @@ blood_patients2 <- blood_patients %>%
   
   group_by(deidentified_patient_id, had_good_sample_chemo_rad) %>% 
   mutate(closest_chemo_rad_presample_date = case_when(
-    had_good_sample_chemo_rad == "Yes"       ~ last(specimen_collection_date)
+    had_good_sample_chemo_rad == "Yes"                       ~ last(specimen_collection_date)
   )) %>% 
-  mutate(interval_presample_chemo_rad =
-           abs(interval(start = closest_chemo_rad_presample_date, end = chemotherapy_start_date_1) /
-                 duration(n = 1, units = "days"))) %>%
-  # Look for seq sample after C and before R
+  mutate(interval_presample_chemo_rad = case_when(
+    closest_chemo_rad_presample_date == specimen_collection_date  ~ 
+      abs(interval(start = closest_chemo_rad_presample_date, end = chemotherapy_start_date_1) /
+                 duration(n = 1, units = "days"))
+  )) %>%
+  mutate(presample_id_chemo_rad = case_when(
+    !is.na(interval_presample_chemo_rad)                     ~ sample_id
+  )) %>% 
+  mutate(presample_date_chemo_rad = case_when(
+    !is.na(presample_id_chemo_rad)                                     ~ specimen_collection_date
+  )) %>% 
+  
+  # Find seq sample after C and before R
+  mutate(presample_chemo_rad_within_limits = had_good_sample_chemo_rad) %>%
   group_by(deidentified_patient_id) %>% 
-  fill(had_good_sample_chemo_rad, closest_chemo_rad_presample_date, .direction = "updown") %>% 
+  fill(presample_chemo_rad_within_limits, #closest_chemo_rad_presample_date, 
+       .direction = "updown") %>% 
   ungroup() %>% 
   mutate(seq_sample_Achemo_Brad = case_when(
-    had_good_sample_chemo_rad == "Yes" &
+    presample_chemo_rad_within_limits == "Yes" &
       blood_bf_chemo_rad == "No" &
       specimen_collection_date > chemotherapy_start_date_1 &
       specimen_collection_date <= radiation_start_date_1            ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
+  mutate(seqsample_id_Achemo = case_when(
+    seq_sample_Achemo_Brad == "Yes"                                 ~ sample_id
+  )) %>% 
+  mutate(seqsample_date_Achemo = case_when(
+    !is.na(seqsample_id_Achemo)                                     ~ specimen_collection_date
+  )) %>% 
   mutate(had_good_seqsample_Achemo = case_when(
     seq_sample_Achemo_Brad == "Yes"                                 ~ "Yes"
   )) %>% 
   group_by(deidentified_patient_id) %>%
   mutate(after_chemo_seqsample_date = case_when(
-    had_good_seqsample_Achemo == "Yes"                           ~ first(specimen_collection_date)
+    had_good_seqsample_Achemo == "Yes"                              ~ (specimen_collection_date)
   )) %>% 
   # Look for seq sample after CR
   group_by(deidentified_patient_id) %>%
   fill(had_good_seqsample_Achemo, after_chemo_seqsample_date, .direction = "updown") %>%
   ungroup() %>%
   mutate(seq_sample_Achemo_Arad = case_when(
-    had_good_sample_chemo_rad == "Yes" &
+    presample_chemo_rad_within_limits == "Yes" &
       blood_bf_chemo_rad == "No" &
       had_good_seqsample_Achemo == "Yes" &
       specimen_collection_date > chemotherapy_start_date_1 &
       specimen_collection_date > radiation_start_date_1             ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
+  mutate(seqsample_id_Achemorad = case_when(
+    seq_sample_Achemo_Arad == "Yes"                                 ~ sample_id
+  )) %>% 
+  mutate(seqsample_date_Achemorad = case_when(
+    !is.na(seqsample_id_Achemorad)                                  ~ specimen_collection_date
+  )) %>% 
   mutate(had_good_seqsample_Achemorad = case_when(
     seq_sample_Achemo_Arad == "Yes"                                 ~ "Yes"
   )) %>% 
@@ -612,147 +565,7 @@ blood_patients2 <- blood_patients %>%
   #        everything())
 ```
 
-## Samples after treatments
-```{r Samples after treatments}
-sample_after_chemo <- blood_patients2 %>%
-  filter(seq_sample_chemo == "Yes") %>%
-  arrange(deidentified_patient_id, time_chemo_seqsample) %>%
-  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>%
-  group_by(deidentified_patient_id) %>%
-  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%
-  ungroup() %>%
-  select(deidentified_patient_id, sequential_sample_count, time_chemo_seqsample, everything())
-
-sample_after_chemo %>%
-  ggplot(aes(x =time_chemo_seqsample, fill = sequential_sample_count))+
-  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Chemotherapy start to \nBlood Collection (in days)",
-       y="Number of Patient",
-       caption = "Each bar represents 100 days",
-       title = "Patients who had a sequential sample after Chemotherapy")
-
-# sample_after_hormone <- blood_patients2 %>%
-#   filter(seq_sample_hormone == "Yes") %>%
-#   # mutate(interval_presample_hormone =
-#   #          abs(interval(start = specimen_collection_date, end = hormone_therapy_start_date_1) /
-#   #                duration(n = 1, units = "days"))) %>%
-#   arrange(deidentified_patient_id, interval_presample_hormone) %>%
-#   distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
-#   group_by(deidentified_patient_id) %>% 
-#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
-#   ungroup() %>% 
-#   select(deidentified_patient_id, sequential_sample_count, interval_presample_hormone, everything())
-# 
-# sample_after_hormone %>% 
-#   ggplot(aes(x =interval_presample_hormone, fill = sequential_sample_count))+
-#   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
-#   scale_fill_viridis(discrete=T)+
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Hormonetherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days")
-
-# sample_after_immuno <- blood_patients2 %>%
-#   filter(seq_sample_immuno == "Yes") %>%
-#   # mutate(interval_presample_immuno =
-#   #          abs(interval(start = specimen_collection_date, end = immunotherapy_start_date_1) /
-#   #                duration(n = 1, units = "days"))) %>%
-#   arrange(deidentified_patient_id, interval_presample_immuno) %>%
-#   distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
-#   group_by(deidentified_patient_id) %>% 
-#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
-#   ungroup() %>% 
-#   select(deidentified_patient_id, sequential_sample_count, interval_presample_immuno, everything())
-# 
-# sample_after_immuno %>% 
-#   ggplot(aes(x =interval_presample_immuno, fill = sequential_sample_count))+
-#   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
-#   scale_fill_viridis(discrete=T)+
-#   theme_minimal(base_size = 14) +
-#   labs(x="Time from Blood Collection to Immunotherapy (in days)", 
-#        y="Number of Patient",
-#        caption = "Each bar represents 100 days")
-
-sample_after_rad <- blood_patients2 %>%
-  filter(seq_sample_rad == "Yes") %>%
-  arrange(deidentified_patient_id, time_rad_seqsample) %>%
-  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>%
-  group_by(deidentified_patient_id) %>%
-  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%
-  ungroup()
-
-sample_after_rad %>%
-  ggplot(aes(x =time_rad_seqsample, fill = sequential_sample_count))+
-  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Radiotherapy to \nBlood Collection (in days)",
-       y="Number of Patient",
-       caption = "Each bar represents 100 days",
-       title = "Patients who had a sequential sample after Radiotherapy")
-
-sample_Achemo_Brad <- blood_patients2 %>%
-  filter(had_good_seqsample_Achemo == "Yes") %>%
-  arrange(deidentified_patient_id, time_chemo_1st_seqsample) %>%
-  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
-  group_by(deidentified_patient_id) %>% 
-  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
-  ungroup() %>% 
-  select(deidentified_patient_id, sequential_sample_count, time_chemo_1st_seqsample, everything())
-
-sample_Achemo_Brad %>% 
-  ggplot(aes(x =time_chemo_1st_seqsample, fill = sequential_sample_count))+
-  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Chemotherapy start to sequential sample (in days)", 
-       y="Number of Patient",
-       title = "Sequential samples after \nChemotherapy and before Radiotherapy",
-       caption = "Each bar on the top plot represents 30 days") +
-  ggforce::facet_zoom(xlim = c(0, 250), zoom.size = 2)
-
-
-sample_Achemo_Arad <- blood_patients2 %>%
-  filter(had_good_seqsample_Achemorad == "Yes") %>%
-  arrange(deidentified_patient_id, time_rad_2nd_seqsample) %>%
-  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
-  group_by(deidentified_patient_id) %>% 
-  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
-  ungroup() %>% 
-  select(deidentified_patient_id, sequential_sample_count, time_rad_2nd_seqsample, everything())
-
-sample_Achemo_Arad %>% 
-  ggplot(aes(x =time_rad_2nd_seqsample, fill = sequential_sample_count))+
-  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Radiotherapy to sequential sample (in days)", 
-       y="Number of Patient",
-       title = "Sequential samples after \nChemotherapy and Radiotherapy",
-       caption = "Each bar represents 30 days") +
-  ggforce::facet_zoom(xlim = c(0, 270), zoom.size = 2)
-# sample_after <- bind_rows(sample_after_chemo, sample_after_hormone, sample_after_immuno, sample_after_rad)
-```
-
-Time between Chemo and radiation for patients who had both sequential samples
-```{r}
-blood_patients2 %>%
-  filter(had_good_seqsample_Achemorad == "Yes") %>%
-  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
-  ggplot(aes(x =interval_chemo_rad))+
-  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Chemotherapy to Radiotherapy (in days)", 
-       y="Number of Patient",
-       title = "Patients with sequential samples after Chemotherapy and Radiotherapy",
-       caption = "Each bar represents 100 days")
-```
-
-
-# Table patients with Blood before and after treatment
+# I. Table patients with Blood before and after treatment
 ```{r}
 tbl1_1 <- blood_patients2 %>% 
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
@@ -818,9 +631,9 @@ tbl5_2 <- blood_patients2 %>% filter(had_chemo_rad == "Yes") %>%
   select(`Chemotherapy then Radiation` = had_good_seqsample_Achemorad) %>% 
   tbl_summary(statistic = list(all_categorical() ~ "{n}"))
 tbl6_2 <- blood_patients2 %>%
-  filter(seq_sample_chemrad == "Yes") %>%
+  filter(seq_sample_chemorad == "Yes") %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
-  select(`C+R or R+C` = seq_sample_chemrad) %>% 
+  select(`C+R or R+C` = seq_sample_chemorad) %>% 
   tbl_summary(statistic = list(all_categorical() ~ "{n}"))
 # tbl6 <- blood_patients2 %>% #filter(had_treatment == "Yes") %>% 
 #   filter(seq_sample_treatment == "Yes") %>%
@@ -912,8 +725,8 @@ tbl_stack(list(tbl_s1, tbl_s4, tbl_s5, tbl_s6)) %>%
 #   select(Radiotherapy = seq_sample_rad) %>% 
 #   tbl_summary(statistic = list(all_categorical() ~ "{n}"))
 # tbl5 <- blood_patients2 %>% filter(had_chemo_rad == "Yes") %>% 
-#   filter(seq_sample_chemrad == "Yes") %>%
-#   select(`Chemotherapy+Radiation` = seq_sample_chemrad) %>% 
+#   filter(seq_sample_chemorad == "Yes") %>%
+#   select(`Chemotherapy+Radiation` = seq_sample_chemorad) %>% 
 #   tbl_summary(statistic = list(all_categorical() ~ "{n}"))
 # # tbl6 <- blood_patients2 %>% #filter(had_treatment == "Yes") %>% 
 # #   filter(seq_sample_treatment == "Yes") %>%
@@ -928,6 +741,202 @@ tbl_stack(list(tbl_s1, tbl_s4, tbl_s5, tbl_s6)) %>%
 #   gt::tab_source_note(gt::md("**THe numbers reported show total samples before the corresponding treatment (`Yes') and total sequential samples after treatment**"))
 
 ```
+
+# II. Sample intervals (focusing on patients who has a pre AND post samples)
+
+## Samples before treatment
+
+```{r}
+sample_before_chemo <- blood_patients2 %>%
+  filter(!is.na(have_good_seqsample_chemo)) %>%
+  arrange(deidentified_patient_id, interval_presample_chemo) %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE)
+
+sample_before_chemo %>%
+  ggplot(aes(x =interval_presample_chemo
+             ))+
+  geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") +
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Blood Collection to Chemotherapy (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 7 days",
+       title = "Patients who had a sequential sample after Chemotherapy") +
+  facet_zoom(xlim = c(0, 365), zoom.size = 1)
+
+sample_before_rad <- blood_patients2 %>%
+  filter(!is.na(have_good_seqsample_rad)) %>%
+  arrange(deidentified_patient_id, interval_presample_rad) %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE)
+
+sample_before_rad %>%
+  ggplot(aes(x =interval_presample_rad
+             ))+
+  geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") +
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Blood Collection to Radiation (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 7 days",
+       title = "Patients who had a sequential sample after Radiation") +
+  facet_zoom(xlim = c(0, 365), zoom.size = 1)
+
+sample_before_chemo_rad <- blood_patients2 %>%
+  filter(!is.na(had_good_seqsample_Achemorad)) %>%
+  arrange(deidentified_patient_id, interval_presample_chemo_rad) %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE)
+
+sample_before_chemo %>%
+  ggplot(aes(x =interval_presample_chemo_rad
+             ))+
+  geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") +
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Blood Collection to Chemotherapy (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 7 days",
+       title = "Patients who had a sequential sample after Chemotherapy then Radiation") +
+  facet_zoom(xlim = c(0, 365), zoom.size = 1)
+```
+
+## Samples after treatments
+
+```{r Samples after treatments}
+sample_after_chemo <- blood_patients2 %>%
+  filter(!is.na(time_chemo_seqsample)) %>%
+  arrange(deidentified_patient_id, time_chemo_seqsample) %>%
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>%
+  group_by(deidentified_patient_id) %>%
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%
+  ungroup() %>%
+  select(deidentified_patient_id, sequential_sample_count, time_chemo_seqsample)
+
+sample_after_chemo %>%
+  ggplot(aes(x =time_chemo_seqsample, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Chemotherapy start to \nSequential Blood Collection (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 100 days",
+       title = "Patients who had a sequential sample after Chemotherapy")
+
+# sample_after_hormone <- blood_patients2 %>%
+#   filter(seq_sample_hormone == "Yes") %>%
+#   # mutate(interval_presample_hormone =
+#   #          abs(interval(start = specimen_collection_date, end = hormone_therapy_start_date_1) /
+#   #                duration(n = 1, units = "days"))) %>%
+#   arrange(deidentified_patient_id, interval_presample_hormone) %>%
+#   distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+#   ungroup() %>% 
+#   select(deidentified_patient_id, sequential_sample_count, interval_presample_hormone, everything())
+# 
+# sample_after_hormone %>% 
+#   ggplot(aes(x =interval_presample_hormone, fill = sequential_sample_count))+
+#   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+#   scale_fill_viridis(discrete=T)+
+#   theme_minimal(base_size = 14) +
+#   labs(x="Time from Blood Collection to Hormonetherapy (in days)", 
+#        y="Number of Patient",
+#        caption = "Each bar represents 100 days")
+
+# sample_after_immuno <- blood_patients2 %>%
+#   filter(seq_sample_immuno == "Yes") %>%
+#   # mutate(interval_presample_immuno =
+#   #          abs(interval(start = specimen_collection_date, end = immunotherapy_start_date_1) /
+#   #                duration(n = 1, units = "days"))) %>%
+#   arrange(deidentified_patient_id, interval_presample_immuno) %>%
+#   distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+#   group_by(deidentified_patient_id) %>% 
+#   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+#   ungroup() %>% 
+#   select(deidentified_patient_id, sequential_sample_count, interval_presample_immuno, everything())
+# 
+# sample_after_immuno %>% 
+#   ggplot(aes(x =interval_presample_immuno, fill = sequential_sample_count))+
+#   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+#   scale_fill_viridis(discrete=T)+
+#   theme_minimal(base_size = 14) +
+#   labs(x="Time from Blood Collection to Immunotherapy (in days)", 
+#        y="Number of Patient",
+#        caption = "Each bar represents 100 days")
+
+sample_after_rad <- blood_patients2 %>%
+  filter(!is.na(time_rad_seqsample)) %>%
+  arrange(deidentified_patient_id, time_rad_seqsample) %>%
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>%
+  group_by(deidentified_patient_id) %>%
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%
+  ungroup()
+
+sample_after_rad %>%
+  ggplot(aes(x =time_rad_seqsample, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Radiotherapy to \nBlood Collection (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 100 days",
+       title = "Patients who had a sequential sample after Radiotherapy")
+
+sample_Achemo_Brad <- blood_patients2 %>%
+  filter(!is.na(time_chemo_1st_seqsample)) %>%
+  arrange(deidentified_patient_id, time_chemo_1st_seqsample) %>%
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, time_chemo_1st_seqsample)
+
+sample_Achemo_Brad %>% 
+  ggplot(aes(x =time_chemo_1st_seqsample, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Chemotherapy start to \n2nd Sequential Sample (in days)", 
+       y="Number of Patient",
+       title = "Sequential samples after \nChemotherapy and before Radiotherapy",
+       caption = "Each bar on the top plot represents 30 days") +
+  ggforce::facet_zoom(xlim = c(0, 250), zoom.size = 2)
+
+
+sample_Achemo_Arad <- blood_patients2 %>%
+  filter(!is.na(time_rad_2nd_seqsample)) %>%
+  arrange(deidentified_patient_id, time_rad_2nd_seqsample) %>%
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, time_rad_2nd_seqsample)
+
+sample_Achemo_Arad %>% 
+  ggplot(aes(x =time_rad_2nd_seqsample, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Radiotherapy to \n 3rd Sequential Sample (in days)", 
+       y="Number of Patient",
+       title = "Sequential samples after \nChemotherapy and Radiotherapy",
+       caption = "Each bar represents 30 days") +
+  ggforce::facet_zoom(xlim = c(0, 270), zoom.size = 2)
+```
+
+## Time between Chemo and radiation for patients who had both sequential samples
+```{r}
+blood_patients2 %>%
+  filter(!is.na(seqsample_id_chemorad)) %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  ggplot(aes(x =interval_chemo_rad))+
+  geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") +
+  # scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Chemotherapy to Radiotherapy (in days)", 
+       y="Number of Patient",
+       title = "Patients with sequential samples after Chemotherapy and Radiotherapy",
+       caption = "Each bar represents 100 days")
+```
+
+
+
 
 # Time between samples and sample lists
 I calculated the time between the closest pre treatment sample from treatment date (would "reference" sample would be a good term?) and the post treatment samples (I call them "sequential" samples)  
@@ -959,7 +968,7 @@ blood_patients2 %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
 df <- blood_patients2 %>% 
-  filter(!is.na(time_chemo_seqsample)) %>% 
+  filter(!is.na(have_good_seqsample_chemo)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
@@ -969,10 +978,11 @@ df <- blood_patients2 %>%
          "number post treatment sample"  = sequential_sample_count, 
          "days from chemo start to sequential sample" =  time_chemo_seqsample)
 
-color.me1 <- which((df$ID %% 2)  == 1) # strips to distinguish patients
+color.me1 <- which((df$ID %% 2)  == 1)
 # color.me <- which(df$`number post treatment sample` == 2)
 # color.me.bold <- which((df$ID %% 2)  == 1)
-color.me.bold <- which(df$`number post treatment sample` == 1)
+color.me.pre <- which(df$`number post treatment sample` == 1)
+color.me.seq1 <- which(df$`number post treatment sample` == 2)
 ```
 
 I coded a de-identified ID for each patient, I used strips to visualize them better.  
@@ -983,8 +993,22 @@ df %>% select(-ID) %>%
   # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
   # kableExtra::row_spec(color.me, background = "#eee") %>%
   kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.bold, color = "red")
+  kableExtra::row_spec(color.me.pre, color = "blue") %>%
+  kableExtra::row_spec(color.me.seq1, color = "red")
+
+df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from pre sample to chemo start`),2),
+            median = round(median(`days from pre sample to chemo start`),2))
+
+df <- df %>% filter(!is.na(`days from chemo start to sequential sample`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from chemo start to sequential sample`),2),
+            median = round(median(`days from chemo start to sequential sample`),2))
 ```
+`days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
+`days from chemo start to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.
+
 <br>
 
 <!-- ## Hormonetherapy -->
@@ -1069,7 +1093,7 @@ blood_patients2 %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
 df <- blood_patients2 %>% 
-  filter(!is.na(time_rad_seqsample)) %>% 
+  filter(!is.na(have_good_seqsample_rad)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
@@ -1082,7 +1106,8 @@ df <- blood_patients2 %>%
 color.me1 <- which((df$ID %% 2)  == 1)
 # color.me <- which(df$`number post treatment sample` == 2)
 # color.me.bold <- which((df$ID %% 2)  == 1)
-color.me.bold <- which(df$`number post treatment sample` == 1)
+color.me.pre <- which(df$`number post treatment sample` == 1)
+color.me.seq1 <- which(df$`number post treatment sample` == 2)
 ```
 
 
@@ -1092,8 +1117,22 @@ df %>% select(-ID) %>%
   # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
   # kableExtra::row_spec(color.me, background = "#eee") %>%
   kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.bold, color = "red")
+  kableExtra::row_spec(color.me.pre, color = "blue") %>%
+  kableExtra::row_spec(color.me.seq1, color = "red")
+
+df1 <- df %>% filter(!is.na(`days from pre sample to radiation`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from pre sample to radiation`),2),
+            median = round(median(`days from pre sample to radiation`),2))
+
+df <- df %>% filter(!is.na(`days from radiation to sequential sample`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from radiation to sequential sample`),2),
+            median = round(median(`days from radiation to sequential sample`),2))
 ```
+`days from pre sample to radiation` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
+`days from radiation to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.
+
 <br>
 
 
@@ -1154,17 +1193,36 @@ df %>% select(-ID) %>%
   kableExtra::row_spec(color.me.pre, color = "blue") %>%
   kableExtra::row_spec(color.me.seq1, color = "red") %>%
   kableExtra::row_spec(color.me.seq2, color = "green")
+
+df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from pre sample to chemo start`),2),
+            median = round(median(`days from pre sample to chemo start`),2))
+
+df2 <- df %>% filter(!is.na(`days from chemo start to sequential sample (T2)`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from chemo start to sequential sample (T2)`),2),
+            median = round(median(`days from chemo start to sequential sample (T2)`),2))
+
+df <- df %>% filter(!is.na(`days from radiation to sequential sample (T3)`)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  summarize(mean = round(mean(`days from radiation to sequential sample (T3)`),2),
+            median = round(median(`days from radiation to sequential sample (T3)`),2))
 ```
+`days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
+`days from chemo start to sequential sample (T2)` has a mean equal to `r df2$mean` and a median equal to `r df2$median`.  
+`days from radiation to sequential sample (T3)` has a mean equal to `r df$mean` and a median equal to `r df$median`.
+
 <br>
 
 ## Chemotherapy + Radiotherapy
 ```{r, fig.width=12, fig.height=9}
 blood_patients2 %>% 
-  filter(!is.na(time_chemrad_seqsample)) %>% 
+  filter(!is.na(time_chemorad_seqsample)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  ggplot(aes(x =interval_prepost_sample_chemrad, fill = sequential_sample_count
+  ggplot(aes(x =interval_prepost_sample_chemorad, fill = sequential_sample_count
              ))+
   geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
   scale_fill_viridis(discrete=T)+
@@ -1182,7 +1240,7 @@ blood_patients2 %>%
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 df <- blood_patients2 %>% 
-  filter(!is.na(time_chemrad_seqsample)) %>% 
+  filter(!is.na(time_chemorad_seqsample)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
@@ -1190,7 +1248,7 @@ df <- blood_patients2 %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to chemo or rad start" = interval_presample_chemrad,
          "number post treatment sample"  = sequential_sample_count, 
-         "days from second treatment to sequential sample" =  time_chemrad_seqsample)
+         "days from second treatment to sequential sample" =  time_chemorad_seqsample)
 color.me1 <- which((df$ID %% 2)  == 1)
 # color.me <- which(df$`number post treatment sample` == 2)
 # color.me.bold <- which((df$ID %% 2)  == 1)
