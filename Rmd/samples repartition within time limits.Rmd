@@ -72,17 +72,18 @@ blood_patients <-
 # Treatment <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Treatment.rds")
 ```
 
-# Repartition of Samples Before and After Treatments
+# Repartition of Samples Before and After Treatments within Time Limits
 
 We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments.  
-- I included the sample BEFORE and CLOSEST to treatment 
-- I included ALL the samples AFTER treatment.
+- I included the sample BEFORE and CLOSEST to treatment which were collected from 365 days before treatment start to 5 days after treatment start.  
+- I included the samples AFTER treatment collected within 365 days after treatment start (365 days after Radiation for group `Chemotherapy then Radiation`.
 
 ```{r}
 blood_patients <- blood_patients %>% 
 # blood_patients <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% 
   mutate(blood_bf_chemo = case_when(
-    specimen_collection_date <= chemotherapy_start_date_1 &
+    specimen_collection_date <= (chemotherapy_start_date_1 + days(5)) &
+      # specimen_collection_date <= specimen_collection_date - 365
       (specimen_collection_date <= radiation_start_date_1 |
       is.na(radiation_start_date_1))                                     ~ "Yes",
     specimen_collection_date > chemotherapy_start_date_1                 ~ "No",
@@ -102,7 +103,7 @@ blood_patients <- blood_patients %>%
   #   TRUE                                                                  ~ NA_character_
   # )) %>% 
   mutate(blood_bf_rad = case_when(
-    specimen_collection_date <= radiation_start_date_1 &
+    specimen_collection_date <= (radiation_start_date_1 + days(5)) &
       (specimen_collection_date <= chemotherapy_start_date_1 |
       is.na(chemotherapy_start_date_1))                                 ~ "Yes",
     specimen_collection_date > radiation_start_date_1                   ~ "No",
@@ -110,10 +111,10 @@ blood_patients <- blood_patients %>%
     TRUE                                                                ~ NA_character_
   )) %>% 
   mutate(blood_bf_chemo_rad = case_when(
-    specimen_collection_date <= chemotherapy_start_date_1 &
-      specimen_collection_date <= radiation_start_date_1                ~ "Yes",
-    specimen_collection_date > chemotherapy_start_date_1 |
-      specimen_collection_date > radiation_start_date_1                 ~ "No",
+    specimen_collection_date <= (chemotherapy_start_date_1 + days(5)) &
+      specimen_collection_date <= (radiation_start_date_1 + days(5))                ~ "Yes",
+    specimen_collection_date > (chemotherapy_start_date_1 + days(5)) |
+      specimen_collection_date > (radiation_start_date_1 + days(5))                 ~ "No",
     is.na(chemotherapy_start_date_1) |
       is.na(radiation_start_date_1)                                     ~ "both not administred",
     TRUE                                                                ~ NA_character_
@@ -261,6 +262,7 @@ blood_patients2 <- blood_patients %>%
     presample_chemo_within_limits == "Yes" &
       blood_bf_chemo == "No" &
       specimen_collection_date > chemotherapy_start_date_1 &
+      specimen_collection_date <= (chemotherapy_start_date_1 + days(365)) &
       (specimen_collection_date <= radiation_start_date_1 |
       is.na(radiation_start_date_1))                                ~ "Yes",
     TRUE                                                            ~ "No"
@@ -315,6 +317,7 @@ blood_patients2 <- blood_patients %>%
     presample_rad_within_limits == "Yes" &
       blood_bf_rad == "No" &
       specimen_collection_date > radiation_start_date_1 &
+      specimen_collection_date <= (radiation_start_date_1 + days(365)) &
       (specimen_collection_date <= chemotherapy_start_date_1 |
       is.na(chemotherapy_start_date_1))                              ~ "Yes",
     TRUE ~ "No"
@@ -427,7 +430,8 @@ blood_patients2 <- blood_patients %>%
   mutate(seq_sample_chemorad = case_when(
     presample_chemorad_within_limits == "Yes" &
       blood_bf_chemo_rad == "No" &
-      specimen_collection_date > second_chemorad_date        ~ "Yes",
+      specimen_collection_date > second_chemorad_date &
+      specimen_collection_date <= (second_chemorad_date + days(365)) ~ "Yes",
     TRUE                                                     ~ "No"
   )) %>%
   mutate(seqsample_id_chemorad = case_when(
@@ -486,6 +490,7 @@ blood_patients2 <- blood_patients %>%
     presample_chemo_rad_within_limits == "Yes" &
       blood_bf_chemo_rad == "No" &
       specimen_collection_date > chemotherapy_start_date_1 &
+      specimen_collection_date <= (chemotherapy_start_date_1 + days(365)) &
       specimen_collection_date <= radiation_start_date_1            ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
@@ -511,7 +516,8 @@ blood_patients2 <- blood_patients %>%
       blood_bf_chemo_rad == "No" &
       had_good_seqsample_Achemo == "Yes" &
       specimen_collection_date > chemotherapy_start_date_1 &
-      specimen_collection_date > radiation_start_date_1             ~ "Yes",
+      specimen_collection_date > radiation_start_date_1 &
+      specimen_collection_date <= (radiation_start_date_1 + days(365))  ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
   mutate(seqsample_id_Achemorad = case_when(
@@ -967,12 +973,13 @@ blood_patients2 %>%
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+chemo_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_chemo)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id))
+df <- chemo_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to chemo start" = interval_presample_chemo,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1093,12 +1100,13 @@ blood_patients2 %>%
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+rad_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_rad)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id))
+df <- rad_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to radiation" = interval_presample_rad,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1164,12 +1172,13 @@ We have a list of `r length(df)` unique patients.
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+chemorad_patients <- blood_patients2 %>% 
   filter(!is.na(had_good_seqsample_Achemorad)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id)) 
+df <- chemorad_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to chemo start" = interval_presample_chemo_rad,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1269,7 +1278,36 @@ df %>% select(-ID) %>%
 ```
 <br>
 
- 
+<!-- How patients overlap? -->
+```{r}
+# overlap <- 
+#   full_join(chemorad_patients %>% 
+#               select(deidentified_patient_id, presample_id_chemo_rad,
+#                      seqsample_id_Achemo, seqsample_id_Achemorad),
+#             chemo_patients %>% 
+#               select(deidentified_patient_id, presample_id_chemo, 
+#                      presample_id_chemo_rad,
+#                      seqsample_id_chemo, 
+#                      seqsample_id_Achemo), 
+#             by = c("deidentified_patient_id", "presample_id_chemo_rad", "seqsample_id_Achemo")) %>% 
+#   full_join(.,
+#             rad_patients %>% 
+#               select(deidentified_patient_id, presample_id_rad,
+#                      seqsample_id_rad),
+#             by = "deidentified_patient_id") %>% 
+#   arrange(presample_id_chemo_rad, presample_id_chemo) %>% 
+#   mutate(common_presample = case_when(
+#     presample_id_chemo == presample_id_chemo_rad             ~ "Yes",
+#     presample_id_chemo != presample_id_chemo_rad             ~ "No"
+#   )) %>% 
+#   mutate(common_seqsample_chemo = case_when(
+#     presample_id_chemo == presample_id_chemo_rad             ~ "Yes",
+#     presample_id_chemo != presample_id_chemo_rad             ~ "No"
+#   )) %>% 
+#   arrange(deidentified_patient_id)
+
+```
+
 
 # List chemotherapy drugs (first regimen) 
 
