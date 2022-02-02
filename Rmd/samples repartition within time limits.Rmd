@@ -78,6 +78,23 @@ We focus on the chemotherapy and radiation treatment so the samples are not chos
 - I included the sample BEFORE and CLOSEST to treatment which were collected from 365 days before treatment start to 5 days after treatment start.  
 - I included the samples AFTER treatment collected within 365 days after treatment start (365 days after Radiation for group `Chemotherapy then Radiation`.
 
+-Christelle to see how many patients are added with the 5-days after chemo/radiation start to see if we should set it back to 0
+-Stop date (chemo only)
+--100 days after start date
+--Or after latest stop date
+---Or after latest stop date +365 days
+--Christelle to summarize sample times in context of latest stop date
+---Need to decide how many days after stop date to include for sequential sample
+-When there are 3 samples for chemo+radiation
+--2nd sample
+---Need it to be after chemo stop
+---AND choose sample closest to radiation start (if multiple samples)
+-For patients with radiation only
+-Pre-sample
+---Up to 1 year before chemo/radiation start would keep most patients – for pre-sample
+---If multiple, take closest to radiation start
+--Post-sample
+---Idea: 100 days after first start date, but within a year
 ```{r}
 blood_patients <- blood_patients %>% 
 # blood_patients <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% 
@@ -1015,7 +1032,7 @@ df <- df %>% filter(!is.na(`days from chemo start to sequential sample`)) %>%
 ```
 `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from chemo start to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(chemo_patients$deidentified_patient_id))` unique patients.
 
 <br>
 
@@ -1141,7 +1158,7 @@ df <- df %>% filter(!is.na(`days from radiation to sequential sample`)) %>%
 ```
 `days from pre sample to radiation` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from radiation to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(rad_patients$deidentified_patient_id))` unique patients.
 
 <br>
 
@@ -1223,7 +1240,7 @@ df <- df %>% filter(!is.na(`days from radiation to sequential sample (T3)`)) %>%
 `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from chemo start to sequential sample (T2)` has a mean equal to `r df2$mean` and a median equal to `r df2$median`.  
 `days from radiation to sequential sample (T3)` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(chemorad_patients$deidentified_patient_id))` unique patients.
 
 <br>
 

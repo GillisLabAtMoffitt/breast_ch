@@ -967,12 +967,13 @@ blood_patients2 %>%
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+chemo_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_chemo)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id)) 
+df <- chemorad_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to chemo start" = interval_presample_chemo,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1008,7 +1009,7 @@ df <- df %>% filter(!is.na(`days from chemo start to sequential sample`)) %>%
 ```
 `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from chemo start to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(chemo_patients$deidentified_patient_id))` unique patients.
 
 <br>
 
@@ -1093,12 +1094,13 @@ blood_patients2 %>%
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+rad_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_rad)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id)) 
+df <- rad_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to radiation" = interval_presample_rad,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1133,7 +1135,7 @@ df <- df %>% filter(!is.na(`days from radiation to sequential sample`)) %>%
 ```
 `days from pre sample to radiation` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from radiation to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(rad_patients$deidentified_patient_id))` unique patients.
 
 <br>
 
@@ -1164,12 +1166,13 @@ We have a list of `r length(df)` unique patients.
   # kableExtra::kable_styling() %>%
   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
-df <- blood_patients2 %>% 
+chemorad_patients <- blood_patients2 %>% 
   filter(!is.na(had_good_seqsample_Achemorad)) %>% 
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
-  mutate(ID = dense_rank(deidentified_patient_id)) %>%
+  mutate(ID = dense_rank(deidentified_patient_id)) 
+df <- chemorad_patients %>%
   select(deidentified_patient_id, ID,
          "days from pre sample to chemo start" = interval_presample_chemo_rad,
          "number post treatment sample"  = sequential_sample_count, 
@@ -1214,7 +1217,7 @@ df <- df %>% filter(!is.na(`days from radiation to sequential sample (T3)`)) %>%
 `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.  
 `days from chemo start to sequential sample (T2)` has a mean equal to `r df2$mean` and a median equal to `r df2$median`.  
 `days from radiation to sequential sample (T3)` has a mean equal to `r df$mean` and a median equal to `r df$median`.  
-We have a list of `r length(df)` unique patients.
+We have a list of `r length(unique(chemorad_patients$deidentified_patient_id))` unique patients.
 
 <br>
 
