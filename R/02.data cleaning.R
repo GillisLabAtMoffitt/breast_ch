@@ -85,6 +85,10 @@ Chemot <- Chemot %>%
     str_detect(chemotherapy_start_date, "2300")                   ~ NA_Date_,
     TRUE                                                          ~ chemotherapy_start_date
   )) %>% 
+  mutate(chemotherapy_end_date = case_when(
+    str_detect(chemotherapy_end_date, "2300")                     ~ NA_Date_,
+    TRUE                                                          ~ chemotherapy_end_date
+  )) %>% 
   mutate(across(where(is.character), ~str_to_lower(.))) %>% 
   # Remove no chemo given in chemotherapy_drug
   filter(chemotherapy_drug != "no chemo given" | is.na(chemotherapy_drug)) %>% 
@@ -231,7 +235,7 @@ Chemot <- Chemot1 %>%
   summarise_at(vars(chemotherapy_drug, chemotherapy_end_date), str_c, collapse = "; ") %>% 
   ungroup() %>% 
   separate(chemotherapy_end_date, paste("chemotherapy_end_date", 10:1, sep = ""), 
-           sep = ";", remove = TRUE, 
+           sep = "; ", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
   purrr::keep(~!all(is.na(.)))
 
