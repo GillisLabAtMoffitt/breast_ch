@@ -31,8 +31,6 @@ breast_info <-
   mutate(across(where(is.character), ~str_to_sentence(.))) %>% 
   filter(str_detect(primary_site_group, "Breast")) %>%
   distinct(mrn, date_of_diagnosis, .keep_all = TRUE) %>% 
-  mutate_at("date_of_diagnosis", ~ as.Date(as.numeric(.), 
-                                            origin = "1899-12-30")) %>%
   arrange(mrn, date_of_diagnosis) %>% 
   select(-c(group_name))
 
@@ -229,7 +227,7 @@ Chemot1 <- Chemot1 %>%
   distinct() 
 
 Chemot <- Chemot1 %>%
-  arrange(mrn, chemotherapy_start_date) %>% 
+  arrange(mrn, chemotherapy_start_date, chemotherapy_drug) %>% 
   # group_by(mrn, chemotherapy_start_date, chemotherapy_end_date) %>%
   group_by(mrn, chemotherapy_start_date) %>%
   summarise_at(vars(chemotherapy_drug, chemotherapy_end_date), str_c, collapse = "; ") %>% 
@@ -237,7 +235,16 @@ Chemot <- Chemot1 %>%
   separate(chemotherapy_end_date, paste("chemotherapy_end_date", 10:1, sep = ""), 
            sep = "; ", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  purrr::keep(~!all(is.na(.)))
+  purrr::keep(~!all(is.na(.))) %>% 
+  left_join(., 
+            breast_patients %>% 
+              select(mrn, date_of_diagnosis), by= "mrn") %>% 
+  mutate(remove = case_when(
+    chemotherapy_start_date < date_of_diagnosis              ~ "remove",
+    TRUE                                                     ~ NA_character_
+  )) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove, -date_of_diagnosis)
 
 # pivot wider, use dcast bc better to keep date class
 chemot <- dcast(setDT(Chemot), mrn ~ rowid(mrn),
@@ -374,8 +381,7 @@ Hormonet1 <- Hormonet1 %>%
   distinct()
 
 Hormonet <- Hormonet1 %>%
-  arrange(mrn, hormone_therapy_start_date) %>% 
-  # group_by(mrn, chemotherapy_start_date, chemotherapy_end_date) %>%
+  arrange(mrn, hormone_therapy_start_date, hormone_therapy_drug) %>% 
   group_by(mrn, hormone_therapy_start_date) %>%
   # pivot_wider(id_cols = c(mrn, hormone_therapy_start_date), values_from = chemotherapy_drug)
   summarise_at(vars(hormone_therapy_drug, hormone_therapy_end_date), str_c, collapse = "; ") %>% 
@@ -383,7 +389,16 @@ Hormonet <- Hormonet1 %>%
   separate(hormone_therapy_end_date, paste("hormone_therapy_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  purrr::keep(~!all(is.na(.)))
+  purrr::keep(~!all(is.na(.))) %>% 
+  left_join(., 
+            breast_patients %>% 
+              select(mrn, date_of_diagnosis), by= "mrn") %>% 
+  mutate(remove = case_when(
+    hormone_therapy_start_date < date_of_diagnosis           ~ "remove",
+    TRUE                                                     ~ NA_character_
+  )) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove, -date_of_diagnosis)
 
 
 hormonet <- dcast(setDT(Hormonet), mrn ~ rowid(mrn),
@@ -499,14 +514,23 @@ Immnunot1 <- Immnunot1 %>%
   distinct()
 
 Immnunot <- Immnunot1 %>%
-  arrange(mrn, immunotherapy_start_date) %>% 
+  arrange(mrn, immunotherapy_start_date, immunotherapy_drug) %>% 
   group_by(mrn, immunotherapy_start_date) %>%
   summarise_at(vars(immunotherapy_drug, immunotherapy_end_date), str_c, collapse = "; ") %>% 
   ungroup() %>% 
   separate(immunotherapy_end_date, paste("immunotherapy_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  purrr::keep(~!all(is.na(.)))
+  purrr::keep(~!all(is.na(.))) %>% 
+  left_join(., 
+            breast_patients %>% 
+              select(mrn, date_of_diagnosis), by= "mrn") %>% 
+  mutate(remove = case_when(
+    immunotherapy_start_date < date_of_diagnosis             ~ "remove",
+    TRUE                                                     ~ NA_character_
+  )) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove, -date_of_diagnosis)
 
 
 immnunot <- dcast(setDT(Immnunot), mrn ~ rowid(mrn),
@@ -649,7 +673,16 @@ Radiot <- Radiot1 %>%
   separate(radiation_end_date, paste("radiation_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  purrr::keep(~!all(is.na(.)))
+  purrr::keep(~!all(is.na(.))) %>% 
+  left_join(., 
+            breast_patients %>% 
+              select(mrn, date_of_diagnosis), by= "mrn") %>% 
+  mutate(remove = case_when(
+    radiation_start_date < date_of_diagnosis                 ~ "remove",
+    TRUE                                                     ~ NA_character_
+  )) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove, -date_of_diagnosis)
 
 
 radiot <- dcast(setDT(Radiot), mrn ~ rowid(mrn),
