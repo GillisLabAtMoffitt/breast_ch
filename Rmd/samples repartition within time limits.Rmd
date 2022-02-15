@@ -63,6 +63,7 @@ library(lubridate)
 library(gtsummary)
 library(viridis)
 library(ggforce)
+library(kableExtra)
 ```
 
 ```{r}
@@ -76,20 +77,20 @@ blood_patients <-
 
 We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments.  
 
-Summary criteria for sample selection:
-•	Chemotherapy only:
-o	Pre-sample must be closest to drug start from -365 days to + 5days 
-o	Sequential sample must be within a year but after stop date
+Summary criteria for sample selection:  
+•	Chemotherapy only:  
+-	Pre-sample must be closest to drug start from -365 days to + 5days   
+-	Sequential sample must be within a year but after stop date  
 
-•	Radiation only:
-o	Pre-sample must be closest to drug start from -365 days to + 5days 
-o	Sequential sample must be within a year but 100 days after radiation
+•	Radiation only:  
+-	Pre-sample must be closest to drug start from -365 days to day 0  
+-	Sequential sample must be within a year but 100 days after radiation  
 
-•	Chemotherapy then Radiation:
-o	Pre-sample must be closest to drug start from -365 days to + 5days 
-o	Sequential sample T2  -> take all
-o	choose T2 closest to radiation start (if multiple samples)
-o	Sequential sample T3 must be within a year but 100 days after radiation
+•	Chemotherapy then Radiation:  
+-	Pre-sample must be closest to drug start from -365 days to + 5days   
+-	Sequential sample T2  -> take all  
+-	choose T2 closest to radiation start (if multiple samples)  
+-	Sequential sample T3 must be within a year but 100 days after radiation  
 
 ```{r}
 blood_patients <- blood_patients %>% 
@@ -246,50 +247,6 @@ arrange(mrn, deidentified_patient_id) %>%
          "blood_bf_hormone", 
          "blood_bf_chemo_rad",
          "blood_bf_treatment", everything())
-```
-
-# missing chemo stop date
-
-```{r}
-blood_patients %>% 
-  filter(blood_bf_chemo == "Yes") %>% 
-  mutate(missing_stop_date = case_when(
-    is.na(chemotherapy_end_date1_1)      ~ "missing",
-    TRUE      ~ "has date"
-  )) %>% 
-  ggplot(aes(x= missing_stop_date)) +
-  geom_bar()
-```
-We have `r blood_patients %>% filter(blood_bf_chemo == "Yes") %>%  filter(is.na(chemotherapy_end_date1_1)) %>% nrow()` missing stop date.
-
-# What is the duration of the first regimen from start date to last stop date
-
-```{r}
-blood_patients %>% 
-  filter(blood_bf_chemo == "Yes") %>% 
-  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
-           duration(n=1, units = "days")) %>% 
-  ggplot(aes(x= regimen_duration)) +
-  geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "darkgreen") +
-  theme_minimal(base_size = 14) +
-  labs(x="First regimen duration (in days)",
-       y="Number of Patient",
-       caption = "Each bar represents 7 days",
-       title = "Patients who had a presample sample before Chemotherapy") +
-  facet_zoom(xlim = c(0, 365), zoom.size = 1)
-
-blood_patients %>% 
-  filter(blood_bf_chemo == "Yes") %>% 
-  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
-           duration(n=1, units = "days")) %>% 
-  select(regimen_duration) %>% 
-  tbl_summary()
-blood_patients %>% 
-  filter(blood_bf_chemo == "Yes") %>% 
-  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
-           duration(n=1, units = "days")) %>% 
-  select(regimen_duration) %>% 
-  tbl_summary(statistic =list(all_continuous() ~ "{mean} ({min}, {max})"))
 ```
 
 
@@ -646,6 +603,50 @@ blood_patients2 <- blood_patients %>%
   #        "had_good_sample_chemo", "seq_sample_chemo",
   #        time_chemo_seqsample,
   #        everything())
+```
+
+# Missing chemo stop date
+
+```{r}
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_chemo)) %>% 
+  mutate(missing_stop_date = case_when(
+    is.na(chemotherapy_end_date1_1)      ~ "missing",
+    TRUE      ~ "has date"
+  )) %>% 
+  ggplot(aes(x= missing_stop_date)) +
+  geom_bar()
+```
+We have `r blood_patients2 %>% filter(!is.na(seqsample_id_chemo)) %>%  filter(is.na(chemotherapy_end_date1_1)) %>% nrow()` missing stop date.
+
+# What is the duration of the first regimen from start date to last stop date
+
+```{r}
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_chemo)) %>% 
+  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
+           duration(n=1, units = "days")) %>% 
+  ggplot(aes(x= regimen_duration)) +
+  geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "darkgreen") +
+  theme_minimal(base_size = 14) +
+  labs(x="First regimen duration (in days)",
+       y="Number of Patient",
+       caption = "Each bar represents 7 days",
+       title = "Patients who had a presample sample before Chemotherapy") +
+  facet_zoom(xlim = c(0, 365), zoom.size = 1)
+
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_chemo)) %>% 
+  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
+           duration(n=1, units = "days")) %>% 
+  select(regimen_duration) %>% 
+  tbl_summary()
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_chemo)) %>% 
+  mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
+           duration(n=1, units = "days")) %>% 
+  select(regimen_duration) %>% 
+  tbl_summary(statistic =list(all_continuous() ~ "{mean} ({min}, {max})"))
 ```
 
 # I. Table patients with Blood before and after treatment
@@ -1090,8 +1091,8 @@ blood_patients2 %>%
 #   ungroup() %>% 
 #   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
 #   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prechemo_seq_sample), align = "ccl")# %>%
-  # kableExtra::kable_styling() %>%
-  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+  # kable_styling() %>%
+  # cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
 chemo_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_chemo)) %>% 
@@ -1116,12 +1117,12 @@ I coded a de-identified ID for each patient, I used strips to visualize them bet
 This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient.
 ```{r}
 df %>% select(-ID) %>% 
-  kableExtra::kable(booktabs = T, align = "ccl") %>%
-  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
-  # kableExtra::row_spec(color.me, background = "#eee") %>%
-  kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.pre, color = "blue") %>%
-  kableExtra::row_spec(color.me.seq1, color = "red")
+  kable(booktabs = T, align = "ccl") %>%
+  # kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # row_spec(color.me, background = "#eee") %>%
+  row_spec(color.me1, background = "#eee") %>%
+  row_spec(color.me.pre, color = "blue") %>%
+  row_spec(color.me.seq1, color = "red")
 
 df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>% 
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
@@ -1162,8 +1163,8 @@ We have a list of `r length(unique(chemo_patients$deidentified_patient_id))` uni
 # #   ungroup() %>% 
 # #   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
 # #   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prehormone_seq_sample), align = "ccl")# %>%
-#   # kableExtra::kable_styling() %>%
-#   # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+#   # kable_styling() %>%
+#   # cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 # 
 # df <- blood_patients2 %>% 
 #   filter(!is.na(time_hormone_seqsample)) %>% 
@@ -1186,11 +1187,11 @@ We have a list of `r length(unique(chemo_patients$deidentified_patient_id))` uni
 <!-- This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient. -->
 ```{r}
 # df %>% 
-#   kableExtra::kable(booktabs = T, align = "ccl") %>%
-#   # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
-#   # kableExtra::row_spec(color.me, background = "#eee") %>%
-#   kableExtra::row_spec(color.me1, background = "#eee") %>%
-#   kableExtra::row_spec(color.me.bold, color = "red")
+#   kable(booktabs = T, align = "ccl") %>%
+#   # kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+#   # row_spec(color.me, background = "#eee") %>%
+#   row_spec(color.me1, background = "#eee") %>%
+#   row_spec(color.me.bold, color = "red")
 ```
 <br>
 
@@ -1217,8 +1218,8 @@ blood_patients2 %>%
 #   ungroup() %>% 
 #   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
 #   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prerad_seq_sample), align = "ccl")# %>%
-  # kableExtra::kable_styling() %>%
-  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+  # kable_styling() %>%
+  # cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
 rad_patients <- blood_patients2 %>% 
   filter(!is.na(have_good_seqsample_rad)) %>% 
@@ -1242,12 +1243,12 @@ color.me.seq1 <- which(df$`number post treatment sample` == 2)
 
 ```{r table samples}
 df %>% select(-ID) %>% 
-  kableExtra::kable(booktabs = T, align = "ccl") %>%
-  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
-  # kableExtra::row_spec(color.me, background = "#eee") %>%
-  kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.pre, color = "blue") %>%
-  kableExtra::row_spec(color.me.seq1, color = "red")
+  kable(booktabs = T, align = "ccl") %>%
+  # kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # row_spec(color.me, background = "#eee") %>%
+  row_spec(color.me1, background = "#eee") %>%
+  row_spec(color.me.pre, color = "blue") %>%
+  row_spec(color.me.seq1, color = "red")
 
 df1 <- df %>% filter(!is.na(`days from pre sample to radiation`)) %>% 
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
@@ -1289,8 +1290,8 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 #   ungroup() %>% 
 #   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
 #   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prerad_seq_sample), align = "ccl")# %>%
-  # kableExtra::kable_styling() %>%
-  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+  # kable_styling() %>%
+  # cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 
 chemorad_patients <- blood_patients2 %>% 
   filter(!is.na(had_good_seqsample_Achemorad)) %>% 
@@ -1318,13 +1319,13 @@ color.me.seq2 <- which(!is.na(df$`days from radiation to sequential sample (T3)`
 
 ```{r}
 df %>% select(-ID) %>% 
-  kableExtra::kable(booktabs = T, align = "ccl") %>%
-  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
-  # kableExtra::row_spec(color.me, background = "#eee") %>%
-  kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.pre, color = "blue") %>%
-  kableExtra::row_spec(color.me.seq1, color = "red") %>%
-  kableExtra::row_spec(color.me.seq2, color = "green")
+  kable(booktabs = T, align = "ccl") %>%
+  # kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # row_spec(color.me, background = "#eee") %>%
+  row_spec(color.me1, background = "#eee") %>%
+  row_spec(color.me.pre, color = "blue") %>%
+  row_spec(color.me.seq1, color = "red") %>%
+  row_spec(color.me.seq2, color = "green")
 
 df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>% 
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
@@ -1370,8 +1371,8 @@ blood_patients2 %>%
 #   ungroup() %>% 
 #   mutate(ID = dense_rank(deidentified_patient_id)) %>% 
 #   select(ID, "number post treatment sample"  = sequential_sample_count, "days from closest pre treatment sample to post treatment sample" =  time_prerad_seq_sample), align = "ccl")# %>%
-  # kableExtra::kable_styling() %>%
-  # kableExtra::cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
+  # kable_styling() %>%
+  # cell_spec(bold = T, background = ifelse(ID > 6, "red", "white"))
 df <- blood_patients2 %>% 
   filter(!is.na(time_chemorad_seqsample)) %>% 
   group_by(deidentified_patient_id) %>% 
@@ -1391,11 +1392,11 @@ color.me.bold <- which(df$`number post treatment sample` == 1)
 
 ```{r}
 df %>% select(-ID) %>% 
-  kableExtra::kable(booktabs = T, align = "ccl") %>%
-  # kableExtra::kable_styling(latex_options = "striped", stripe_color = "red") #%>%
-  # kableExtra::row_spec(color.me, background = "#eee") %>%
-  kableExtra::row_spec(color.me1, background = "#eee") %>%
-  kableExtra::row_spec(color.me.bold, color = "red")
+  kable(booktabs = T, align = "ccl") %>%
+  # kable_styling(latex_options = "striped", stripe_color = "red") #%>%
+  # row_spec(color.me, background = "#eee") %>%
+  row_spec(color.me1, background = "#eee") %>%
+  row_spec(color.me.bold, color = "red")
 ```
 <br>
 
@@ -1433,18 +1434,120 @@ df %>% select(-ID) %>%
 # List chemotherapy drugs (first regimen) 
 
 ```{r}
-blood_patients2 %>% filter(had_chemo == "Yes") %>% 
-  filter(seq_sample_chemo == "Yes") %>% 
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_Achemorad) |
+           !is.na(seqsample_id_chemo)) %>% 
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(chemotherapy_drug_1) %>% 
   tbl_summary(sort = list(everything() ~ "frequency"))
+
+blood_patients2 %>% 
+  filter(!is.na(seqsample_id_hormone)) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(hormone_therapy_drug_1) %>% 
+  tbl_summary(sort = list(everything() ~ "frequency"))
+```
+
+# Patients list
+## Chemo then Rad
+```{r}
+chemorad_patients <- blood_patients2 %>% 
+  filter(!is.na(seqsample_id_Achemorad)) 
+blood_patients2 %>% 
+  filter(str_detect(deidentified_patient_id,
+                    paste0(chemorad_patients$deidentified_patient_id, 
+                           collapse = "|"))) %>% 
+  select(deidentified_patient_id, 
+         presample_id_chemorad, presample_date_chemorad,
+         seqsample_id_Achemo, seqsample_date_Achemo,
+         seqsample_id_Achemorad, seqsample_date_Achemorad,
+         "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1, 
+         chemotherapy_drug_1, radiation_start_date_1) %>% 
+  group_by(deidentified_patient_id) %>% 
+  fill(everything(), .direction = "updown") %>% 
+  distinct() %>% 
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "100%")
+```
+
+## Chemo
+```{r}
+chemo_patients <- blood_patients2 %>% 
+  filter(!is.na(seqsample_id_chemo)) %>% 
+  filter(!str_detect(deidentified_patient_id,
+                    paste0(chemorad_patients$deidentified_patient_id, 
+                           collapse = "|")))
+blood_patients2 %>% 
+  filter(str_detect(deidentified_patient_id,
+                    paste0(chemo_patients$deidentified_patient_id, 
+                           collapse = "|"))) %>% 
+  select(deidentified_patient_id, 
+         presample_id_chemo, presample_date_chemo,
+         seqsample_id_chemo, seqsample_date_chemo,
+         time_chemo_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1, 
+         chemotherapy_drug_1) %>% 
+  group_by(deidentified_patient_id) %>% 
+  fill(everything(), .direction = "updown") %>% 
+  distinct() %>% 
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "100%")
+```
+
+## Rad
+```{r}
+rad_patients <- blood_patients2 %>% 
+  filter(!is.na(seqsample_id_rad)) 
+blood_patients2 %>% 
+  filter(str_detect(deidentified_patient_id,
+                    paste0(rad_patients$deidentified_patient_id, 
+                           collapse = "|"))) %>% 
+  select(deidentified_patient_id, 
+         presample_id_rad, presample_date_rad,
+         seqsample_id_rad, seqsample_date_rad,
+         time_rad_seqsample,
+         radiation_start_date_1) %>% 
+  group_by(deidentified_patient_id) %>% 
+  fill(everything(), .direction = "updown") %>% 
+  distinct() %>% 
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "100%")
+```
+
+# Hormone
+```{r}
+hormone_patients <- blood_patients2 %>% 
+  filter(!is.na(seqsample_id_hormone)) 
+blood_patients2 %>% 
+  filter(str_detect(deidentified_patient_id,
+                    paste0(hormone_patients$deidentified_patient_id, 
+                           collapse = "|"))) %>% 
+  select(deidentified_patient_id, 
+         presample_id_hormone, presample_date_hormone,
+         seqsample_id_hormone, seqsample_date_hormone,
+         time_hormone_seqsample,
+         hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+         hormone_therapy_drug_1) %>% 
+  group_by(deidentified_patient_id) %>% 
+  fill(everything(), .direction = "updown") %>% 
+  distinct() %>% 
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "100%")
 ```
 
 # ER status
 
-got the data data
 ```{r}
-
+# blood_patients2 %>% 
+#   filter(str_detect(deidentified_patient_id,
+#                     paste0(chemorad_patients$deidentified_patient_id, 
+#                            collapse = "|"))) %>% 
+#   select(ER)
 ```
 
 
