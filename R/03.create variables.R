@@ -1,4 +1,4 @@
-Global_data <- read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Global_data.rds")
+Global_data <- read_rds(paste0(here::here(), "/Global_data.rds"))
 
 blood_patients <- Global_data %>% 
   # filter to patients who have blood samples
