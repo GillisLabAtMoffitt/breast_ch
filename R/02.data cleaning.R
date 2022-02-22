@@ -83,8 +83,6 @@ breast_patients_id <- paste0(breast_patients$mrn, collapse = "|")
 ################################################################################# IV ### Clean treatments
 # Chemotherapy----
 Chemot <- Chemot %>% 
-  filter(!str_detect(chemotherapy_drug, "AG-013736|BRENTUXUMAB|DEPOCYT") |
-         is.na(chemotherapy_drug)) %>% 
   mutate(mrn = as.character(mrn),
          mrn = coalesce(mrn, party_id)) %>% 
   # Limit to Breast cancer patients
@@ -105,6 +103,18 @@ Chemot <- Chemot %>%
   mutate(across(where(is.character), ~str_to_lower(.))) %>% 
   # Remove no chemo given in chemotherapy_drug
   filter(chemotherapy_drug != "no chemo given" | is.na(chemotherapy_drug)) %>% 
+  # Remove drugs not for breast cancer
+  # filter(!str_detect(chemotherapy_drug, "AG-013736|BRENTUXUMAB|DEPOCYT") |
+  #        is.na(chemotherapy_drug)) %>% 
+  mutate(chemotherapy_drug = case_when(
+    chemotherapy_drug == "cisplatin - c1"                         ~ "cisplatin",
+    chemotherapy_drug == "abraxane (form of taxol)"               ~ "paclitaxel",
+    chemotherapy_drug %in% 
+      c("niraparib", "ag-013736 (investigationa", 
+        "brentuxumab", "depocyt")                                 ~ "non-breast",
+    TRUE                                                          ~ chemotherapy_drug
+  )) %>% 
+  filter(chemotherapy_drug != "non-breast" | is.na(chemotherapy_drug)) %>% 
   # Remove NA in both drug name and date
   filter_at(vars(chemotherapy_drug, chemotherapy_start_date,
                  chemotherapy_end_date), any_vars(!is.na(.)))
@@ -243,14 +253,18 @@ Chemot1 <- Chemot1 %>%
 
 Chemot <- Chemot1 %>%
   arrange(mrn, chemotherapy_start_date, chemotherapy_drug) %>% 
-  # group_by(mrn, chemotherapy_start_date, chemotherapy_end_date) %>%
+  # Combine drugs into regimen
   group_by(mrn, chemotherapy_start_date) %>%
-  summarise_at(vars(chemotherapy_drug, chemotherapy_end_date), str_c, collapse = "; ") %>% 
+  summarise_at(vars(chemotherapy_drug, chemotherapy_end_date, chemotherapy_type), 
+               str_c, collapse = "; ") %>% 
   ungroup() %>% 
   separate(chemotherapy_end_date, paste("chemotherapy_end_date", 10:1, sep = ""), 
            sep = "; ", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
+  mutate(across(starts_with("chemotherapy_end_date"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
+  
+  # Remove drugs that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(mrn, .keep_all = TRUE) %>% 
@@ -261,12 +275,11 @@ Chemot <- Chemot1 %>%
   )) %>% 
   filter(is.na(remove)) %>% 
   
+  
+  # Combine AC + P as 1 regimen
   group_by(mrn) %>%
   mutate(linenumber = row_number()) %>%
   
-  mutate(line_start_gap = as.numeric(chemotherapy_start_date - lag(chemotherapy_start_date))) %>% 
-  fill(line_start_gap, .direction = "up") %>% 
-
   mutate(AC = case_when(
     chemotherapy_drug == "adriamycin; cyclophosphamide" &
       linenumber == 1                                                 ~ "AC"
@@ -274,20 +287,37 @@ Chemot <- Chemot1 %>%
   mutate(AC_start_date = case_when(
     AC == "AC"                                                        ~ chemotherapy_start_date
   )) %>% 
+  mutate(AC_stop_date = case_when(
+    AC == "AC"                                                        ~ chemotherapy_end_date1
+  )) %>% 
   mutate(paclitaxel = case_when(
     chemotherapy_drug == "paclitaxel" &
       linenumber == 2                                                 ~ "paclitaxel"
   )) %>%
+  mutate(pac_start_date = case_when(
+    paclitaxel == "paclitaxel"                                        ~ chemotherapy_start_date
+  )) %>% 
   mutate(pac_end_date = case_when(
     paclitaxel == "paclitaxel"                                        ~ chemotherapy_end_date1
   )) %>% 
-  fill(AC, AC_start_date, paclitaxel, pac_end_date,
+  fill(AC, AC_start_date, AC_stop_date, 
+       paclitaxel, pac_start_date, pac_end_date,
        .direction = "updown") %>%
+  
+  
+  mutate(line_start_gap = as.numeric(chemotherapy_start_date - lag(chemotherapy_start_date))) %>% 
+  mutate(line_gap = case_when(
+      AC == "AC" &
+      paclitaxel == "paclitaxel"                                      ~ pac_start_date - AC_stop_date 
+    )) %>% 
+  fill(line_start_gap, line_gap, .direction = "up") %>% 
+  
   ungroup() %>% 
+  
   mutate(chemotherapy_drug = case_when(
     (linenumber == 1 |
        linenumber == 2) &
-      line_start_gap < 90 &
+      # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ "adriamycin; cyclophosphamide; paclitaxel",
     TRUE                                                              ~ chemotherapy_drug
@@ -295,7 +325,7 @@ Chemot <- Chemot1 %>%
   mutate(chemotherapy_start_date = case_when(
     (linenumber == 1 |
        linenumber == 2) &
-      line_start_gap < 90 &
+      # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ AC_start_date,
     TRUE                                                              ~ chemotherapy_start_date
@@ -303,12 +333,14 @@ Chemot <- Chemot1 %>%
   mutate(chemotherapy_end_date1 = case_when(
     (linenumber == 1 |
        linenumber == 2) &
-      line_start_gap < 90 &
+      # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ pac_end_date,
     TRUE                                                              ~ chemotherapy_end_date1
   )) %>% 
-  select(-c(remove, date_of_diagnosis1, AC, AC_start_date, paclitaxel, pac_end_date)) %>% 
+  distinct(mrn, chemotherapy_drug, chemotherapy_start_date, chemotherapy_end_date1, 
+           .keep_all = TRUE) %>%  # 705976
+  # select(-c(remove, date_of_diagnosis1, AC, AC_start_date, paclitaxel, pac_end_date)) %>% 
   mutate(linenumber = row_number())
   
 
@@ -317,8 +349,15 @@ chemot <- dcast(setDT(Chemot), mrn ~ rowid(mrn),
                 value.var = c(
                   "chemotherapy_drug",
                   "chemotherapy_start_date",
-                  "chemotherapy_end_date1"
-                ))
+                  "chemotherapy_end_date1",
+                  "chemotherapy_type",
+                  "line_gap"
+                )) %>% 
+  select(mrn, starts_with("chemotherapy_drug"),
+         starts_with("chemotherapy_start"),
+         starts_with("chemotherapy_end"),
+         chemotherapy_type_1, chemotherapy_type_2,
+         line_gap_1)
 
 Chemot <- Chemot %>%
   select(mrn, treatment_start_date = chemotherapy_start_date,
@@ -341,9 +380,21 @@ Hormonet <- Hormonet %>%
     str_detect(hormone_therapy_start_date, "2300")                ~ NA_Date_,
     TRUE                                                          ~ hormone_therapy_start_date
   )) %>% 
+  mutate(hormone_therapy_end_date = case_when(
+    str_detect(hormone_therapy_end_date, "2300")                  ~ NA_Date_,
+    TRUE                                                          ~ hormone_therapy_end_date
+  )) %>% 
   mutate(across(where(is.character), ~str_to_lower(.))) %>% 
   # Remove no hormone given in hormone_therapy_drug
   filter(hormone_therapy_drug != "no hormone given" | is.na(hormone_therapy_drug)) %>% 
+  # Remove drugs not for breast cancer
+  mutate(hormone_therapy_drug = case_when(
+    hormone_therapy_drug %in% 
+      c("dexamethasone", 
+        "synthroid, levothyroxine")                               ~ "non-breast",
+    TRUE                                                          ~ hormone_therapy_drug
+  )) %>% 
+  filter(hormone_therapy_drug != "non-breast" | is.na(hormone_therapy_drug)) %>% 
   # Remove NA in both drug name and date
   filter_at(vars(hormone_therapy_drug, hormone_therapy_start_date,
                  hormone_therapy_end_date), any_vars(!is.na(.)))
@@ -455,7 +506,9 @@ Hormonet <- Hormonet1 %>%
   separate(hormone_therapy_end_date, paste("hormone_therapy_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
+  mutate(across(starts_with("hormone_therapy_end_date"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
+  # Remove drugs that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(mrn, .keep_all = TRUE) %>% 
@@ -588,7 +641,9 @@ Immnunot <- Immnunot1 %>%
   separate(immunotherapy_end_date, paste("immunotherapy_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
+  mutate(across(starts_with("immunotherapy_end_date"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
+  # Remove drugs that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(mrn, .keep_all = TRUE) %>% 
@@ -741,7 +796,9 @@ Radiot <- Radiot1 %>%
   separate(radiation_end_date, paste("radiation_end_date", 10:1, sep = ""), 
            sep = ";", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
+  mutate(across(starts_with("radiation_end_date"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
+  # Remove rad that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(mrn, .keep_all = TRUE) %>% 
@@ -771,10 +828,10 @@ Radiot <- Radiot %>%
 
 
 # Bind treatment data----
-treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>% 
-  arrange(mrn, treatment_start_date) %>% 
-  group_by(mrn, treatment_type) %>% 
-  mutate(treatment_line = row_number(mrn)) %>% 
+treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
+  arrange(mrn, treatment_start_date) %>%
+  group_by(mrn, treatment_type) %>%
+  mutate(treatment_line = row_number(mrn)) %>%
   unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE)
 
 Treatment <- full_join(chemot, hormonet, by = "mrn") %>% 
