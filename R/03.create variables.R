@@ -1,8 +1,7 @@
-Global_data <- read_rds(paste0(here::here(), "/Global_data.rds"))
+## WILL USE WHEN GET THE SEQUENCING DATA
 
-blood_patients <- Global_data %>% 
-  # filter to patients who have blood samples
-  filter(!is.na(specimen_collection_date))
+blood_patients <- read_rds(paste0(here::here(), "/blood_patients.rds"))
+
 
 # blood_patients <- blood_patients %>% 
   # create age
@@ -49,7 +48,6 @@ blood_patients <- Global_data %>%
   # )) %>% 
   
   
-write_rds(blood_patients, "blood_patients.rds")
 
 
 # End create variables

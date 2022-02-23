@@ -304,12 +304,39 @@ Chemot <- Chemot1 %>%
        paclitaxel, pac_start_date, pac_end_date,
        .direction = "updown") %>%
   
+  # Combine 5 fu; cyclophosphamide; epirubicin + D as 1 regimen
+  mutate(FuCE = case_when(
+    chemotherapy_drug == "5 fu; cyclophosphamide; epirubicin" &
+      linenumber == 1                                                 ~ "FuCE"
+  )) %>%
+  mutate(FuCE_start_date = case_when(
+    FuCE == "FuCE"                                                    ~ chemotherapy_start_date
+  )) %>% 
+  mutate(FuCE_stop_date = case_when(
+    FuCE == "FuCE"                                                    ~ chemotherapy_end_date1
+  )) %>% 
+  mutate(docetaxel = case_when(
+    chemotherapy_drug == "docetaxel" &
+      linenumber == 2                                                 ~ "docetaxel"
+  )) %>%
+  mutate(doce_start_date = case_when(
+    docetaxel == "docetaxel"                                          ~ chemotherapy_start_date
+  )) %>% 
+  mutate(doce_end_date = case_when(
+    docetaxel == "docetaxel"                                          ~ chemotherapy_end_date1
+  )) %>% 
+  fill(FuCE, FuCE_start_date, FuCE_stop_date, 
+       docetaxel, doce_start_date, doce_end_date,
+       .direction = "updown") %>%
   
+  #####
   mutate(line_start_gap = as.numeric(chemotherapy_start_date - lag(chemotherapy_start_date))) %>% 
   mutate(line_gap = case_when(
-      AC == "AC" &
-      paclitaxel == "paclitaxel"                                      ~ pac_start_date - AC_stop_date 
-    )) %>% 
+    AC == "AC" &
+      paclitaxel == "paclitaxel"                                      ~ pac_start_date - AC_stop_date,
+    FuCE == "FuCE" &
+      docetaxel == "docetaxel"                                        ~ doce_start_date - FuCE_stop_date
+  )) %>% 
   fill(line_start_gap, line_gap, .direction = "up") %>% 
   
   ungroup() %>% 
@@ -320,6 +347,10 @@ Chemot <- Chemot1 %>%
       # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ "adriamycin; cyclophosphamide; paclitaxel",
+    (linenumber == 1 |
+       linenumber == 2) &
+      FuCE == "FuCE" &
+      docetaxel == "docetaxel"                                        ~ "5 fu; cyclophosphamide; epirubicin; docetaxel",
     TRUE                                                              ~ chemotherapy_drug
   )) %>% 
   mutate(chemotherapy_start_date = case_when(
@@ -328,6 +359,10 @@ Chemot <- Chemot1 %>%
       # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ AC_start_date,
+    (linenumber == 1 |
+       linenumber == 2) &
+      FuCE == "FuCE" &
+      docetaxel == "docetaxel"                                        ~ FuCE_start_date,
     TRUE                                                              ~ chemotherapy_start_date
   )) %>% 
   mutate(chemotherapy_end_date1 = case_when(
@@ -336,6 +371,10 @@ Chemot <- Chemot1 %>%
       # line_gap < 90 &
       AC == "AC" &
       paclitaxel == "paclitaxel"                                      ~ pac_end_date,
+    (linenumber == 1 |
+       linenumber == 2) &
+      FuCE == "FuCE" &
+      docetaxel == "docetaxel"                                        ~ doce_end_date,
     TRUE                                                              ~ chemotherapy_end_date1
   )) %>% 
   distinct(mrn, chemotherapy_drug, chemotherapy_start_date, chemotherapy_end_date1, 
@@ -1158,6 +1197,12 @@ Global_data <- #full_join(Demographic, breast_dna, by = "mrn") %>%
   select(c(deidentified_patient_id, mrn, everything(), -zero))
 
 write_rds(Global_data, "Global_data.rds")
+
+blood_patients <- Global_data %>% 
+  # filter to patients who have blood samples
+  filter(!is.na(specimen_collection_date))
+
+write_rds(blood_patients, "blood_patients.rds")
 
 
 # End cleaning

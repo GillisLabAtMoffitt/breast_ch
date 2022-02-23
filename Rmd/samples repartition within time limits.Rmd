@@ -86,7 +86,8 @@ blood_patients <-
 - remove drugs not used for breast cancer treatment
 - removed drugs which were refused
 - removed drugs that happened before the first date of diagnosis for breast cancer
-- combined AC followed by P **when less than *not chosen* days between AC stop date and P start date**
+- combined AC followed by P  
+- combined 5FU, cyclophosphamide, epirubicin followed by docetaxel
 
 # Repartition of Samples Before and After Treatments within Time Limits
 
@@ -115,7 +116,7 @@ Summary criteria for sample selection:
 * Hormonetherapy:  
   + Pre-sample must be closest to drug start from -365 days to + 5days   
      + also needs to be before chemo/rad or no chemo/rad was given
-  + Sequential sample T2 must be within a year but 82 days after radiation  
+  + Sequential sample T2 must be within a year but 83 days after hormone  
      + also needs to be before chemo/rad or no chemo/rad was given
 
 ```{r}
@@ -419,7 +420,7 @@ blood_patients2 <- blood_patients %>%
   mutate(seq_sample_hormone = case_when(
     presample_hormone_within_limits == "Yes" &
       blood_bf_hormone == "No" &
-      specimen_collection_date > (hormone_therapy_start_date_1 + days(82)
+      specimen_collection_date > (hormone_therapy_start_date_1 + days(83)
                                   ) &
       specimen_collection_date <= (hormone_therapy_start_date_1 + days(365)
                                    ) &
@@ -1092,24 +1093,29 @@ chemo_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   filter(chemotherapy_drug_1 == "adriamycin; cyclophosphamide; paclitaxel") %>% 
   select(chemotherapy_drug_1, line_gap_1)
+
+chemo_patients %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  filter(chemotherapy_drug_1 == "5 fu; cyclophosphamide; epirubicin; docetaxel") %>% 
+  select(chemotherapy_drug_1, line_gap_1)
 ```
 
 ## 6.Patients list
 ```{r}
-chemo_patients %>% 
-  select(deidentified_patient_id, 
-         # presample_id_chemo, 
+chemo_patients %>%
+  select(deidentified_patient_id,
+         presample_id_chemo,
          presample_date_chemo,
-         # seqsample_id_chemo, 
+         seqsample_id_chemo,
          seqsample_date_chemo,
          time_chemo_seqsample,
-         chemotherapy_start_date_1, chemotherapy_end_date1_1, 
-         chemotherapy_drug_1) %>% 
-  group_by(deidentified_patient_id) %>% 
-  fill(everything(), .direction = "updown") %>% 
-  distinct() %>% 
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
   kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
 ```
 
@@ -1236,19 +1242,19 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 
 ## 5.Patients list
 ```{r}
-rad_patients %>% 
-  select(deidentified_patient_id, 
-         # presample_id_rad, 
+rad_patients %>%
+  select(deidentified_patient_id,
+         presample_id_rad,
          presample_date_rad,
-         # seqsample_id_rad, 
+         seqsample_id_rad,
          seqsample_date_rad,
          time_rad_seqsample,
-         radiation_start_date_1) %>% 
-  group_by(deidentified_patient_id) %>% 
-  fill(everything(), .direction = "updown") %>% 
-  distinct() %>% 
+         radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
   kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
 ```
 <br>
@@ -1306,30 +1312,8 @@ sample_Achemo_Brad %>%
        caption = "Each bar on the top plot represents 30 days")
 ```
 
-## 3-1.Samples after treatments
-```{r}
-sample_Achemo_Arad <- chemorad_patients %>%
-  filter(!is.na(time_rad_2nd_seqsample)) %>%
-  arrange(deidentified_patient_id, time_rad_2nd_seqsample) %>%
-  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
-  group_by(deidentified_patient_id) %>% 
-  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
-  ungroup() %>% 
-  select(deidentified_patient_id, sequential_sample_count, time_rad_2nd_seqsample)
-
-sample_Achemo_Arad %>% 
-  ggplot(aes(x =time_rad_2nd_seqsample, fill = sequential_sample_count))+
-  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
-  scale_fill_viridis(discrete=T)+
-  theme_minimal(base_size = 14) +
-  labs(x="Time from Radiotherapy to \n3rd Sequential Sample T3 (in days)", 
-       y="Number of Patient",
-       title = "Patients who had a sequential sample between and after Chemotherapy and Radiation",
-       caption = "Each bar represents 30 days")
-```
-
-## 3-2.Time between chemotherapy stop date and T2
-
+## 3.Samples after treatments
+## 3-1.Time between chemotherapy stop date and T2
 ```{r}
 chemorad_patients %>%
   filter(!is.na(seqsample_date_Achemo)) %>%
@@ -1352,6 +1336,28 @@ chemorad_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(chemo_stop_T2) %>% 
   tbl_summary(type = list(chemo_stop_T2 ~ "continuous"))
+```
+
+## 3-2.Time from Radiotherapy to T3
+```{r}
+sample_Achemo_Arad <- chemorad_patients %>%
+  filter(!is.na(time_rad_2nd_seqsample)) %>%
+  arrange(deidentified_patient_id, time_rad_2nd_seqsample) %>%
+  distinct(deidentified_patient_id, specimen_collection_date, .keep_all = TRUE) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
+  ungroup() %>% 
+  select(deidentified_patient_id, sequential_sample_count, time_rad_2nd_seqsample)
+
+sample_Achemo_Arad %>% 
+  ggplot(aes(x =time_rad_2nd_seqsample, fill = sequential_sample_count))+
+  geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") +
+  scale_fill_viridis(discrete=T)+
+  theme_minimal(base_size = 14) +
+  labs(x="Time from Radiotherapy to \n3rd Sequential Sample T3 (in days)", 
+       y="Number of Patient",
+       title = "Patients who had a sequential sample between and after Chemotherapy and Radiation",
+       caption = "Each bar represents 30 days")
 ```
 
 ## 4.Time between T2 and T3
@@ -1458,22 +1464,22 @@ chemorad_patients %>%
 
 ## 6.Patients list
 ```{r}
-chemorad_patients %>% 
-  select(deidentified_patient_id, 
-         # presample_id_chemorad, 
+chemorad_patients %>%
+  select(deidentified_patient_id,
+         presample_id_chemorad,
          presample_date_chemorad,
-         # seqsample_id_Achemo, 
+         seqsample_id_Achemo,
          seqsample_date_Achemo,
-         # seqsample_id_Achemorad, 
+         seqsample_id_Achemorad,
          seqsample_date_Achemorad,
          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
-         chemotherapy_start_date_1, chemotherapy_end_date1_1, 
-         chemotherapy_drug_1, radiation_start_date_1) %>% 
-  group_by(deidentified_patient_id) %>% 
-  fill(everything(), .direction = "updown") %>% 
-  distinct() %>% 
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1, radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
   kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
 ```
 <br>
@@ -1629,24 +1635,26 @@ hormone_patients %>%
 
 ## 6.Patients list
 ```{r}
-hormone_patients %>% 
-  select(deidentified_patient_id, 
-         # presample_id_hormone, 
+hormone_patients %>%
+  select(deidentified_patient_id,
+         presample_id_hormone,
          presample_date_hormone,
-         # seqsample_id_hormone, 
+         seqsample_id_hormone,
          seqsample_date_hormone,
          time_hormone_seqsample,
-         hormone_therapy_start_date_1, hormone_therapy_end_date1_1, 
-         hormone_therapy_drug_1) %>% 
-  group_by(deidentified_patient_id) %>% 
-  fill(everything(), .direction = "updown") %>% 
-  distinct() %>% 
+         hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+         hormone_therapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
   kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
 ```
 
+# Done!!!!!
 
+<font size="10"> `r emo::ji("partying_face")` `r emo::ji("party_popper")` `r emo::ji("clinking_glasses")`</font> 
 
 
 
