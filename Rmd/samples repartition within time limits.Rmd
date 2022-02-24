@@ -1117,6 +1117,21 @@ chemo_patients %>%
   kbl() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
+
+# a <- chemo_patients %>%
+#   select(mrn, deidentified_patient_id,
+#          presample_id_chemo,
+#          presample_date_chemo,
+#          interval_presample_chemo,
+#          seqsample_id_chemo,
+#          seqsample_date_chemo,
+#          time_chemo_seqsample,
+#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
+#          chemotherapy_drug_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct()
+# write_csv(a, "Samples list chemotherapy group in breast patients 02242022.csv")
 ```
 
 # IV. Radiation group
@@ -1256,6 +1271,21 @@ rad_patients %>%
   kbl() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
+
+# a <- rad_patients %>%
+#   select(mrn, deidentified_patient_id,
+#          presample_id_rad,
+#          presample_date_rad,
+#          interval_presample_rad,
+#          seqsample_id_rad,
+#          seqsample_date_rad,
+#          time_rad_seqsample,
+#          radiation_start_date_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct()
+# 
+# write_csv(a, "Samples list radiotherapy group in breast patients 02242022.csv")
 ```
 <br>
 <br>
@@ -1481,6 +1511,25 @@ chemorad_patients %>%
   kbl() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
+
+# a <- chemorad_patients %>%
+#   select(mrn, deidentified_patient_id,
+#          presample_id_chemorad,
+#          presample_date_chemorad,
+#          interval_presample_chemo_rad,
+#          seqsample_id_Achemo,
+#          seqsample_date_Achemo,
+#          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample,
+#          seqsample_id_Achemorad,
+#          seqsample_date_Achemorad,
+#          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
+#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
+#          chemotherapy_drug_1, radiation_start_date_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct()
+
+# write_csv(a, "Samples list chemotherapy then radiotherapy group in breast patients 02242022.csv")
 ```
 <br>
 <br>
@@ -1650,6 +1699,22 @@ hormone_patients %>%
   kbl() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
   scroll_box(width = "100%")
+
+# a <- hormone_patients %>%
+#   select(mrn, deidentified_patient_id,
+#          presample_id_hormone,
+#          presample_date_hormone,
+#          interval_presample_hormone,
+#          seqsample_id_hormone,
+#          seqsample_date_hormone,
+#          time_hormone_seqsample,
+#          hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+#          hormone_therapy_drug_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct()
+
+# write_csv(a, "Samples list hormonetherapy group in breast patients 02242022.csv")
 ```
 
 # Done!!!!!
