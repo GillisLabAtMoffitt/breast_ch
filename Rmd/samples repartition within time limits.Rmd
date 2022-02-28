@@ -312,7 +312,7 @@ blood_patients2 <- blood_patients %>%
   mutate(seq_sample_chemo = case_when(
     presample_chemo_within_limits == "Yes" &
       blood_bf_chemo == "No" &
-      specimen_collection_date > chemotherapy_end_date1_1 &
+      specimen_collection_date >= chemotherapy_end_date1_1 &
       specimen_collection_date <= (chemotherapy_start_date_1 + days(365)) &
       (specimen_collection_date <= radiation_start_date_1 |
       is.na(radiation_start_date_1))                                ~ "Yes",
@@ -323,6 +323,12 @@ blood_patients2 <- blood_patients %>%
   )) %>% 
   mutate(seqsample_date_chemo = case_when(
     !is.na(seqsample_id_chemo)                                     ~ specimen_collection_date
+  )) %>% 
+  mutate(seqsample_before_2nd_regimen = case_when(
+    !is.na(seqsample_id_chemo) &
+      specimen_collection_date <= chemotherapy_start_date_2        ~ "sample before 2nd regimen",
+    !is.na(seqsample_id_chemo) &
+      specimen_collection_date > chemotherapy_start_date_2         ~ "sample after"
   )) %>% 
   mutate(have_good_seqsample_chemo = case_when(
     seq_sample_chemo == "Yes"                                       ~ "Yes"
@@ -420,7 +426,7 @@ blood_patients2 <- blood_patients %>%
   mutate(seq_sample_hormone = case_when(
     presample_hormone_within_limits == "Yes" &
       blood_bf_hormone == "No" &
-      specimen_collection_date > (hormone_therapy_start_date_1 + days(83)
+      specimen_collection_date >= (hormone_therapy_start_date_1 + days(83)
                                   ) &
       specimen_collection_date <= (hormone_therapy_start_date_1 + days(365)
                                    ) &
@@ -434,7 +440,13 @@ blood_patients2 <- blood_patients %>%
     seq_sample_hormone == "Yes"                                          ~ sample_id
   )) %>% 
   mutate(seqsample_date_hormone = case_when(
-    !is.na(seqsample_id_hormone)                                     ~ specimen_collection_date
+    !is.na(seqsample_id_hormone)                                      ~ specimen_collection_date
+  )) %>% 
+  mutate(seqsample_before_2nd_regimen_hormone = case_when(
+    !is.na(seqsample_id_hormone) &
+      specimen_collection_date <= hormone_therapy_start_date_2        ~ "sample before 2nd regimen",
+    !is.na(seqsample_id_hormone) &
+      specimen_collection_date > hormone_therapy_start_date_2         ~ "sample after"
   )) %>% 
   mutate(have_good_seqsample_hormone = case_when(
     seq_sample_hormone == "Yes"                                       ~ "Yes"
@@ -1042,12 +1054,16 @@ chemo_patients <- chemo_patients %>%
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
+  mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_chemo)/
+             duration(n=1, units = "days")) %>% 
   mutate(ID = dense_rank(deidentified_patient_id))
 
 df <- chemo_patients %>%
   select(deidentified_patient_id, ID,
          "number post treatment sample"  = sequential_sample_count, 
          "days from pre sample to chemo start" = interval_presample_chemo,
+         chemo_stop_T2,
+         seqsample_before_2nd_regimen,
          "days from chemo start to sequential sample" =  time_chemo_seqsample)
 
 color.me1 <- which((df$ID %% 2)  == 1)
@@ -1102,21 +1118,22 @@ chemo_patients %>%
 
 ## 6.Patients list
 ```{r}
-chemo_patients %>%
-  select(deidentified_patient_id,
-         presample_id_chemo,
-         presample_date_chemo,
-         seqsample_id_chemo,
-         seqsample_date_chemo,
-         time_chemo_seqsample,
-         chemotherapy_start_date_1, chemotherapy_end_date1_1,
-         chemotherapy_drug_1) %>%
-  group_by(deidentified_patient_id) %>%
-  fill(everything(), .direction = "updown") %>%
-  distinct() %>%
-  kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  scroll_box(width = "100%")
+# chemo_patients %>%
+#   select(deidentified_patient_id,
+#          presample_id_chemo,
+#          presample_date_chemo,
+#          seqsample_id_chemo,
+#          seqsample_date_chemo,
+#          seqsample_before_2nd_regimen,
+#          chemo_stop_T2, time_chemo_seqsample,
+#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
+#          chemotherapy_drug_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct() %>%
+#   kbl() %>%
+#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#   scroll_box(width = "100%")
 
 # a <- chemo_patients %>%
 #   select(mrn, deidentified_patient_id,
@@ -1258,20 +1275,20 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 
 ## 5.Patients list
 ```{r}
-rad_patients %>%
-  select(deidentified_patient_id,
-         presample_id_rad,
-         presample_date_rad,
-         seqsample_id_rad,
-         seqsample_date_rad,
-         time_rad_seqsample,
-         radiation_start_date_1) %>%
-  group_by(deidentified_patient_id) %>%
-  fill(everything(), .direction = "updown") %>%
-  distinct() %>%
-  kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  scroll_box(width = "100%")
+# rad_patients %>%
+#   select(deidentified_patient_id,
+#          presample_id_rad,
+#          presample_date_rad,
+#          seqsample_id_rad,
+#          seqsample_date_rad,
+#          time_rad_seqsample,
+#          radiation_start_date_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct() %>%
+#   kbl() %>%
+#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#   scroll_box(width = "100%")
 
 # a <- rad_patients %>%
 #   select(mrn, deidentified_patient_id,
@@ -1496,23 +1513,23 @@ chemorad_patients %>%
 
 ## 6.Patients list
 ```{r}
-chemorad_patients %>%
-  select(deidentified_patient_id,
-         presample_id_chemorad,
-         presample_date_chemorad,
-         seqsample_id_Achemo,
-         seqsample_date_Achemo,
-         seqsample_id_Achemorad,
-         seqsample_date_Achemorad,
-         "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
-         chemotherapy_start_date_1, chemotherapy_end_date1_1,
-         chemotherapy_drug_1, radiation_start_date_1) %>%
-  group_by(deidentified_patient_id) %>%
-  fill(everything(), .direction = "updown") %>%
-  distinct() %>%
-  kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  scroll_box(width = "100%")
+# chemorad_patients %>%
+#   select(deidentified_patient_id,
+#          presample_id_chemorad,
+#          presample_date_chemorad,
+#          seqsample_id_Achemo,
+#          seqsample_date_Achemo,
+#          seqsample_id_Achemorad,
+#          seqsample_date_Achemorad,
+#          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
+#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
+#          chemotherapy_drug_1, radiation_start_date_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct() %>%
+#   kbl() %>%
+#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#   scroll_box(width = "100%")
 
 # a <- chemorad_patients %>%
 #   select(mrn, deidentified_patient_id,
@@ -1637,12 +1654,16 @@ hormone_patients <- hormone_patients %>%
   group_by(deidentified_patient_id) %>% 
   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% 
   ungroup() %>% 
+  mutate(hormone_stop_T2 = interval(start = hormone_therapy_end_date1_1, end = seqsample_date_Achemo)/
+             duration(n=1, units = "days")) %>% 
   mutate(ID = dense_rank(deidentified_patient_id))
 
 df <- hormone_patients %>%
   select(deidentified_patient_id, ID,
          "number post treatment sample"  = sequential_sample_count, 
          "days from pre sample to hormone start" = interval_presample_hormone,
+         hormone_stop_T2,
+         seqsample_before_2nd_regimen_hormone,
          "days from hormone start to sequential sample" =  time_hormone_seqsample)
 
 color.me1 <- which((df$ID %% 2)  == 1)
@@ -1687,21 +1708,21 @@ hormone_patients %>%
 
 ## 6.Patients list
 ```{r}
-hormone_patients %>%
-  select(deidentified_patient_id,
-         presample_id_hormone,
-         presample_date_hormone,
-         seqsample_id_hormone,
-         seqsample_date_hormone,
-         time_hormone_seqsample,
-         hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
-         hormone_therapy_drug_1) %>%
-  group_by(deidentified_patient_id) %>%
-  fill(everything(), .direction = "updown") %>%
-  distinct() %>%
-  kbl() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  scroll_box(width = "100%")
+# hormone_patients %>%
+#   select(deidentified_patient_id,
+#          presample_id_hormone,
+#          presample_date_hormone,
+#          seqsample_id_hormone,
+#          seqsample_date_hormone,
+#          hormone_stop_T2, time_hormone_seqsample,
+#          hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+#          hormone_therapy_drug_1) %>%
+#   group_by(deidentified_patient_id) %>%
+#   fill(everything(), .direction = "updown") %>%
+#   distinct() %>%
+#   kbl() %>%
+#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#   scroll_box(width = "100%")
 
 # a <- hormone_patients %>%
 #   select(mrn, deidentified_patient_id,
