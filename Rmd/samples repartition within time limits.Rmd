@@ -116,7 +116,7 @@ Summary criteria for sample selection:
 * Hormonetherapy:  
   + Pre-sample must be closest to drug start from -365 days to + 5days   
      + also needs to be before chemo/rad or no chemo/rad was given
-  + Sequential sample T2 must be within a year but 83 days after hormone  
+  + Sequential sample T2 must be within a year but 83 days after hormone (match the average duration of chemo)  
      + also needs to be before chemo/rad or no chemo/rad was given
 
 ```{r}
@@ -1123,6 +1123,7 @@ chemo_patients %>%
 #          presample_id_chemo,
 #          presample_date_chemo,
 #          interval_presample_chemo,
+#          sequential_sample_count,
 #          seqsample_id_chemo,
 #          seqsample_date_chemo,
 #          time_chemo_seqsample,
@@ -1277,6 +1278,7 @@ rad_patients %>%
 #          presample_id_rad,
 #          presample_date_rad,
 #          interval_presample_rad,
+#          sequential_sample_count,
 #          seqsample_id_rad,
 #          seqsample_date_rad,
 #          time_rad_seqsample,
@@ -1520,6 +1522,7 @@ chemorad_patients %>%
 #          seqsample_id_Achemo,
 #          seqsample_date_Achemo,
 #          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample,
+#          sequential_sample_count,
 #          seqsample_id_Achemorad,
 #          seqsample_date_Achemorad,
 #          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
@@ -1528,7 +1531,7 @@ chemorad_patients %>%
 #   group_by(deidentified_patient_id) %>%
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
-
+# 
 # write_csv(a, "Samples list chemotherapy then radiotherapy group in breast patients 02242022.csv")
 ```
 <br>
@@ -1705,6 +1708,7 @@ hormone_patients %>%
 #          presample_id_hormone,
 #          presample_date_hormone,
 #          interval_presample_hormone,
+#          sequential_sample_count,
 #          seqsample_id_hormone,
 #          seqsample_date_hormone,
 #          time_hormone_seqsample,
@@ -1713,7 +1717,7 @@ hormone_patients %>%
 #   group_by(deidentified_patient_id) %>%
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
-
+# 
 # write_csv(a, "Samples list hormonetherapy group in breast patients 02242022.csv")
 ```
 
