@@ -318,9 +318,18 @@ blood_patients2 <- blood_patients %>%
       is.na(radiation_start_date_1))                                ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
-  mutate(seqsample_id_chemo = case_when(
-    seq_sample_chemo == "Yes"                                       ~ sample_id
+  group_by(mrn, seq_sample_chemo) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_chemo == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
   )) %>% 
+  ungroup() %>% 
+  
+  mutate(seqsample_id_chemo = case_when(
+    is_first_seq_sample == "Yes"                                    ~ sample_id
+  )) %>% 
+  
   mutate(seqsample_date_chemo = case_when(
     !is.na(seqsample_id_chemo)                                     ~ specimen_collection_date
   )) %>% 
@@ -362,7 +371,7 @@ blood_patients2 <- blood_patients %>%
     !is.na(interval_presample_rad)                           ~ sample_id
   )) %>% 
   mutate(presample_date_rad = case_when(
-    !is.na(presample_id_rad)                                     ~ specimen_collection_date
+    !is.na(presample_id_rad)                                        ~ specimen_collection_date
   )) %>% 
   
   # Find sequential samples
@@ -379,14 +388,23 @@ blood_patients2 <- blood_patients %>%
       is.na(chemotherapy_start_date_1))                              ~ "Yes",
     TRUE ~ "No"
   )) %>%
+  
+  group_by(mrn, seq_sample_rad) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_rad == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
+  )) %>% 
+  ungroup() %>% 
+  
   mutate(seqsample_id_rad = case_when(
-    seq_sample_rad == "Yes"                                          ~ sample_id
+    is_first_seq_sample == "Yes"                                    ~ sample_id
   )) %>% 
   mutate(seqsample_date_rad = case_when(
-    !is.na(seqsample_id_rad)                                     ~ specimen_collection_date
+    !is.na(seqsample_id_rad)                                        ~ specimen_collection_date
   )) %>% 
   mutate(have_good_seqsample_rad = case_when(
-    seq_sample_rad == "Yes"                                       ~ "Yes"
+    seq_sample_rad == "Yes"                                         ~ "Yes"
   )) %>% 
   fill(have_good_seqsample_rad, .direction = "updown") %>% 
   mutate(time_rad_seqsample = case_when(
@@ -436,9 +454,19 @@ blood_patients2 <- blood_patients %>%
       is.na(radiation_start_date_1))                                     ~ "Yes",
     TRUE ~ "No"
   )) %>%
-  mutate(seqsample_id_hormone = case_when(
-    seq_sample_hormone == "Yes"                                          ~ sample_id
+  
+  group_by(mrn, seq_sample_hormone) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_hormone == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
   )) %>% 
+  ungroup() %>% 
+  
+  mutate(seqsample_id_hormone = case_when(
+    is_first_seq_sample == "Yes"                                    ~ sample_id
+  )) %>% 
+  
   mutate(seqsample_date_hormone = case_when(
     !is.na(seqsample_id_hormone)                                      ~ specimen_collection_date
   )) %>% 
@@ -500,16 +528,26 @@ blood_patients2 <- blood_patients %>%
       blood_bf_chemo_rad == "No" &
       specimen_collection_date > (second_chemorad_date + days(100)) &
       specimen_collection_date <= (second_chemorad_date + days(365)) ~ "Yes",
-    TRUE                                                     ~ "No"
+    TRUE                                                            ~ "No"
   )) %>%
-  mutate(seqsample_id_chemorad = case_when(
-    seq_sample_chemorad == "Yes"                             ~ sample_id
+  
+  group_by(mrn, seq_sample_chemorad) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_chemorad == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
   )) %>% 
+  ungroup() %>% 
+  
+  mutate(seqsample_id_chemorad = case_when(
+    is_first_seq_sample == "Yes"                                    ~ sample_id
+  )) %>% 
+  
   mutate(seqsample_date_chemorad = case_when(
-    !is.na(seqsample_id_chemorad)                                     ~ specimen_collection_date
+    !is.na(seqsample_id_chemorad)                                   ~ specimen_collection_date
   )) %>% 
   mutate(have_good_seqsample_chemorad = case_when(
-    seq_sample_chemorad == "Yes"                                       ~ "Yes"
+    seq_sample_chemorad == "Yes"                                    ~ "Yes"
   )) %>% 
   fill(have_good_seqsample_chemorad, .direction = "updown") %>% 
   # select(deidentified_patient_id, specimen_collection_date, had_good_sample_chemrad, closest_chemorad_presample_date, first_chemo_rad_date,second_chemrad_date,second_chemrad_date, seq_sample_chemorad, chemotherapy_start_date_1, radiation_start_date_1)
@@ -593,9 +631,19 @@ blood_patients2 <- blood_patients %>%
       specimen_collection_date <= (radiation_start_date_1 + days(365))  ~ "Yes",
     TRUE                                                            ~ "No"
   )) %>%
-  mutate(seqsample_id_Achemorad = case_when(
-    seq_sample_Achemo_Arad == "Yes"                                 ~ sample_id
+  
+  group_by(mrn, seq_sample_Achemo_Arad) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_Achemo_Arad == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
   )) %>% 
+  ungroup() %>% 
+  
+  mutate(seqsample_id_Achemorad = case_when(
+    is_first_seq_sample == "Yes"                                    ~ sample_id
+  )) %>% 
+  
   mutate(seqsample_date_Achemorad = case_when(
     !is.na(seqsample_id_Achemorad)                                  ~ specimen_collection_date
   )) %>% 
@@ -1134,13 +1182,13 @@ chemo_patients %>%
 #   kbl() %>%
 #   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
 #   scroll_box(width = "100%")
-
+# 
 # a <- chemo_patients %>%
+#   filter(!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo)) %>% 
 #   select(mrn, deidentified_patient_id,
 #          presample_id_chemo,
 #          presample_date_chemo,
 #          interval_presample_chemo,
-#          sequential_sample_count,
 #          seqsample_id_chemo,
 #          seqsample_date_chemo,
 #          time_chemo_seqsample,
@@ -1149,7 +1197,7 @@ chemo_patients %>%
 #   group_by(deidentified_patient_id) %>%
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
-# write_csv(a, "Samples list chemotherapy group in breast patients 02242022.csv")
+# write_csv(a, "Samples list chemotherapy group in breast patients 03012022.csv")
 ```
 
 # IV. Radiation group
@@ -1289,13 +1337,13 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 #   kbl() %>%
 #   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
 #   scroll_box(width = "100%")
-
+# 
 # a <- rad_patients %>%
+#   filter(!is.na(presample_id_rad) | !is.na(seqsample_id_rad)) %>% 
 #   select(mrn, deidentified_patient_id,
 #          presample_id_rad,
 #          presample_date_rad,
 #          interval_presample_rad,
-#          sequential_sample_count,
 #          seqsample_id_rad,
 #          seqsample_date_rad,
 #          time_rad_seqsample,
@@ -1304,7 +1352,7 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
 # 
-# write_csv(a, "Samples list radiotherapy group in breast patients 02242022.csv")
+# write_csv(a, "Samples list radiotherapy group in breast patients 03012022.csv")
 ```
 <br>
 <br>
@@ -1532,6 +1580,7 @@ chemorad_patients %>%
 #   scroll_box(width = "100%")
 
 # a <- chemorad_patients %>%
+#   filter(!is.na(presample_id_chemorad) | !is.na(seqsample_id_Achemo) | !is.na(seqsample_id_Achemorad)) %>% 
 #   select(mrn, deidentified_patient_id,
 #          presample_id_chemorad,
 #          presample_date_chemorad,
@@ -1539,7 +1588,6 @@ chemorad_patients %>%
 #          seqsample_id_Achemo,
 #          seqsample_date_Achemo,
 #          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample,
-#          sequential_sample_count,
 #          seqsample_id_Achemorad,
 #          seqsample_date_Achemorad,
 #          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
@@ -1549,7 +1597,7 @@ chemorad_patients %>%
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
 # 
-# write_csv(a, "Samples list chemotherapy then radiotherapy group in breast patients 02242022.csv")
+# write_csv(a, "Samples list chemotherapy then radiotherapy group in breast patients 03012022.csv")
 ```
 <br>
 <br>
@@ -1725,11 +1773,11 @@ hormone_patients %>%
 #   scroll_box(width = "100%")
 
 # a <- hormone_patients %>%
+#   filter(!is.na(presample_id_hormone) | !is.na(seqsample_id_hormone)) %>% 
 #   select(mrn, deidentified_patient_id,
 #          presample_id_hormone,
 #          presample_date_hormone,
 #          interval_presample_hormone,
-#          sequential_sample_count,
 #          seqsample_id_hormone,
 #          seqsample_date_hormone,
 #          time_hormone_seqsample,
@@ -1739,7 +1787,7 @@ hormone_patients %>%
 #   fill(everything(), .direction = "updown") %>%
 #   distinct()
 # 
-# write_csv(a, "Samples list hormonetherapy group in breast patients 02242022.csv")
+# write_csv(a, "Samples list hormonetherapy group in breast patients 03012022.csv")
 ```
 
 # Done!!!!!
