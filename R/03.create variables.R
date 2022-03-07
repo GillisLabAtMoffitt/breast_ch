@@ -3,10 +3,11 @@
 blood_patients <- read_rds(paste0(here::here(), "/blood_patients.rds"))
 
 
-# blood_patients <- blood_patients %>% 
+blood_patients <- blood_patients %>%
   # create age
-  # mutate(age_at_diagnosis = interval(start = date_of_birth, end = date_of_diagnosis)/
-  #          duration(n = 1, units = "years")) %>% 
+  mutate(age_at_diagnosis = round(interval(start = date_of_birth, end = date_of_diagnosis1)/
+           duration(n = 1, units = "years"), 1)
+         ) #%>%
   # create treatments cat
   # mutate(had_treatment = case_when(
   #   !is.na(chemotherapy_start_date_1) |
@@ -47,7 +48,7 @@ blood_patients <- read_rds(paste0(here::here(), "/blood_patients.rds"))
   #   TRUE                                                            ~ "No"
   # )) %>% 
   
-  
+write_rds(blood_patients, "blood_patients.rds")
 
 
 # End create variables

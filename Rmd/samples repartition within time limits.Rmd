@@ -1166,6 +1166,10 @@ chemo_patients %>%
 
 ## 6.Patients list
 ```{r}
+chemo_patients %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(deidentified_patient_id, age_at_diagnosis)
+
 # chemo_patients %>%
 #   select(deidentified_patient_id,
 #          presample_id_chemo,
@@ -1323,6 +1327,10 @@ We have a list of `r length(unique(rad_patients$deidentified_patient_id))` uniqu
 
 ## 5.Patients list
 ```{r}
+rad_patients %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(deidentified_patient_id, age_at_diagnosis)
+
 # rad_patients %>%
 #   select(deidentified_patient_id,
 #          presample_id_rad,
@@ -1561,6 +1569,10 @@ chemorad_patients %>%
 
 ## 6.Patients list
 ```{r}
+chemorad_patients %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(deidentified_patient_id, age_at_diagnosis)
+
 # chemorad_patients %>%
 #   select(deidentified_patient_id,
 #          presample_id_chemorad,
@@ -1756,6 +1768,10 @@ hormone_patients %>%
 
 ## 6.Patients list
 ```{r}
+hormone_patients %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  select(deidentified_patient_id, age_at_diagnosis)
+
 # hormone_patients %>%
 #   select(deidentified_patient_id,
 #          presample_id_hormone,
