@@ -116,7 +116,7 @@ Summary criteria for sample selection:
 * Hormonetherapy:  
   + Pre-sample must be closest to drug start from -365 days to + 5days   
      + also needs to be before chemo/rad or no chemo/rad was given
-  + Sequential sample T2 must be within a year but 83 days after hormone (match the average duration of chemo)  
+  + Sequential sample T2 must be within a year but 85 days after hormone (match the average duration of chemo)  
      + also needs to be before chemo/rad or no chemo/rad was given
 
 ```{r}
@@ -444,7 +444,7 @@ blood_patients2 <- blood_patients %>%
   mutate(seq_sample_hormone = case_when(
     presample_hormone_within_limits == "Yes" &
       blood_bf_hormone == "No" &
-      specimen_collection_date >= (hormone_therapy_start_date_1 + days(83)
+      specimen_collection_date >= (hormone_therapy_start_date_1 + days(85)
                                   ) &
       specimen_collection_date <= (hormone_therapy_start_date_1 + days(365)
                                    ) &
@@ -743,7 +743,7 @@ We have `r blood_patients2 %>% filter(!is.na(seqsample_id_hormone)) %>% filter(i
 ### Chemo
 ```{r}
 blood_patients2 %>% 
-  filter(!is.na(seqsample_id_chemo)) %>% 
+  filter(!is.na(seqsample_id_chemo) & is.na(had_good_seqsample_Achemorad)) %>% 
   mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
            duration(n=1, units = "days")) %>% 
   ggplot(aes(x= regimen_duration)) +
@@ -755,13 +755,13 @@ blood_patients2 %>%
        title = "Patients who have a pre AND sequential sample \n/ Chemotherapy")
 
 blood_patients2 %>% 
-  filter(!is.na(seqsample_id_chemo)) %>% 
+  filter(!is.na(seqsample_id_chemo) & is.na(had_good_seqsample_Achemorad)) %>% 
   mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
            duration(n=1, units = "days")) %>% 
   select(regimen_duration) %>% 
   tbl_summary()
 blood_patients2 %>% 
-  filter(!is.na(seqsample_id_chemo)) %>% 
+  filter(!is.na(seqsample_id_chemo) & is.na(had_good_seqsample_Achemorad)) %>% 
   mutate(regimen_duration = interval(start = chemotherapy_start_date_1, end = chemotherapy_end_date1_1)/
            duration(n=1, units = "days")) %>% 
   select(regimen_duration) %>% 
@@ -861,7 +861,7 @@ tbl6_1 <- blood_patients2 %>%
 # tbl_s1 <- tbl_stack(list(tbl1, tbl4, tbl5))
 
 tbl1_2 <- blood_patients2 %>% 
-  filter(is.na(seqsample_id_Achemorad) & !is.na(seqsample_id_chemo)) %>%
+  filter(is.na(had_good_seqsample_Achemorad) & !is.na(seqsample_id_chemo)) %>%
   
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(Chemotherapy = seq_sample_chemo) %>% 
@@ -1005,7 +1005,7 @@ tbl_stack(list(tbl_s1, tbl_s4, tbl_s5, tbl_s6, tbl_s2)) %>%
 # III. Chemo group
 ```{r}
 chemo_patients <- blood_patients2 %>% 
-  filter(is.na(seqsample_id_Achemorad) & !is.na(seqsample_id_chemo))
+  filter(is.na(had_good_seqsample_Achemorad) & !is.na(seqsample_id_chemo))
 
 chemo_patients <- blood_patients2 %>%
   filter(
@@ -1170,38 +1170,38 @@ chemo_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(deidentified_patient_id, age_at_diagnosis)
 
-# chemo_patients %>%
-#   select(deidentified_patient_id,
-#          presample_id_chemo,
-#          presample_date_chemo,
-#          seqsample_id_chemo,
-#          seqsample_date_chemo,
-#          seqsample_before_2nd_regimen,
-#          chemo_stop_T2, time_chemo_seqsample,
-#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
-#          chemotherapy_drug_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct() %>%
-#   kbl() %>%
-#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-#   scroll_box(width = "100%")
-# 
-# a <- chemo_patients %>%
-#   filter(!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo)) %>% 
-#   select(mrn, deidentified_patient_id,
-#          presample_id_chemo,
-#          presample_date_chemo,
-#          interval_presample_chemo,
-#          seqsample_id_chemo,
-#          seqsample_date_chemo,
-#          time_chemo_seqsample,
-#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
-#          chemotherapy_drug_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct()
-# write_csv(a, "Samples list chemotherapy group in breast patients 03012022.csv")
+chemo_patients %>%
+  select(deidentified_patient_id,
+         presample_id_chemo,
+         presample_date_chemo,
+         seqsample_id_chemo,
+         seqsample_date_chemo,
+         seqsample_before_2nd_regimen,
+         chemo_stop_T2, time_chemo_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  scroll_box(width = "100%")
+
+chem <- chemo_patients %>%
+  filter(!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo)) %>%
+  select(mrn, deidentified_patient_id,
+         presample_id_chemo,
+         presample_date_chemo,
+         interval_presample_chemo,
+         seqsample_id_chemo,
+         seqsample_date_chemo,
+         time_chemo_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct()
+write_csv(chem, "Samples list chemotherapy group in breast patients 03112022.csv")
 ```
 
 # IV. Radiation group
@@ -1331,36 +1331,36 @@ rad_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(deidentified_patient_id, age_at_diagnosis)
 
-# rad_patients %>%
-#   select(deidentified_patient_id,
-#          presample_id_rad,
-#          presample_date_rad,
-#          seqsample_id_rad,
-#          seqsample_date_rad,
-#          time_rad_seqsample,
-#          radiation_start_date_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct() %>%
-#   kbl() %>%
-#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-#   scroll_box(width = "100%")
-# 
-# a <- rad_patients %>%
-#   filter(!is.na(presample_id_rad) | !is.na(seqsample_id_rad)) %>% 
-#   select(mrn, deidentified_patient_id,
-#          presample_id_rad,
-#          presample_date_rad,
-#          interval_presample_rad,
-#          seqsample_id_rad,
-#          seqsample_date_rad,
-#          time_rad_seqsample,
-#          radiation_start_date_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct()
-# 
-# write_csv(a, "Samples list radiotherapy group in breast patients 03012022.csv")
+rad_patients %>%
+  select(deidentified_patient_id,
+         presample_id_rad,
+         presample_date_rad,
+         seqsample_id_rad,
+         seqsample_date_rad,
+         time_rad_seqsample,
+         radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  scroll_box(width = "100%")
+
+rad <- rad_patients %>%
+  filter(!is.na(presample_id_rad) | !is.na(seqsample_id_rad)) %>%
+  select(mrn, deidentified_patient_id,
+         presample_id_rad,
+         presample_date_rad,
+         interval_presample_rad,
+         seqsample_id_rad,
+         seqsample_date_rad,
+         time_rad_seqsample,
+         radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct()
+
+write_csv(rad, "Samples list radiotherapy group in breast patients 03112022.csv")
 ```
 <br>
 <br>
@@ -1573,43 +1573,43 @@ chemorad_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(deidentified_patient_id, age_at_diagnosis)
 
-# chemorad_patients %>%
-#   select(deidentified_patient_id,
-#          presample_id_chemorad,
-#          presample_date_chemorad,
-#          seqsample_id_Achemo,
-#          seqsample_date_Achemo,
-#          seqsample_id_Achemorad,
-#          seqsample_date_Achemorad,
-#          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
-#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
-#          chemotherapy_drug_1, radiation_start_date_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct() %>%
-#   kbl() %>%
-#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-#   scroll_box(width = "100%")
+chemorad_patients %>%
+  select(deidentified_patient_id,
+         presample_id_chemorad,
+         presample_date_chemorad,
+         seqsample_id_Achemo,
+         seqsample_date_Achemo,
+         seqsample_id_Achemorad,
+         seqsample_date_Achemorad,
+         "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1, radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  scroll_box(width = "100%")
 
-# a <- chemorad_patients %>%
-#   filter(!is.na(presample_id_chemorad) | !is.na(seqsample_id_Achemo) | !is.na(seqsample_id_Achemorad)) %>% 
-#   select(mrn, deidentified_patient_id,
-#          presample_id_chemorad,
-#          presample_date_chemorad,
-#          interval_presample_chemo_rad,
-#          seqsample_id_Achemo,
-#          seqsample_date_Achemo,
-#          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample,
-#          seqsample_id_Achemorad,
-#          seqsample_date_Achemorad,
-#          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
-#          chemotherapy_start_date_1, chemotherapy_end_date1_1,
-#          chemotherapy_drug_1, radiation_start_date_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct()
-# 
-# write_csv(a, "Samples list chemotherapy then radiotherapy group in breast patients 03012022.csv")
+chrad <- chemorad_patients %>%
+  filter(!is.na(presample_id_chemorad) | !is.na(seqsample_id_Achemo) | !is.na(seqsample_id_Achemorad)) %>%
+  select(mrn, deidentified_patient_id,
+         presample_id_chemorad,
+         presample_date_chemorad,
+         interval_presample_chemo_rad,
+         seqsample_id_Achemo,
+         seqsample_date_Achemo,
+         "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample,
+         seqsample_id_Achemorad,
+         seqsample_date_Achemorad,
+         "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample,
+         chemotherapy_start_date_1, chemotherapy_end_date1_1,
+         chemotherapy_drug_1, radiation_start_date_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct()
+
+write_csv(chrad, "Samples list chemotherapy then radiotherapy group in breast patients 03112022.csv")
 ```
 <br>
 <br>
@@ -1772,38 +1772,38 @@ hormone_patients %>%
   distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
   select(deidentified_patient_id, age_at_diagnosis)
 
-# hormone_patients %>%
-#   select(deidentified_patient_id,
-#          presample_id_hormone,
-#          presample_date_hormone,
-#          seqsample_id_hormone,
-#          seqsample_date_hormone,
-#          hormone_stop_T2, time_hormone_seqsample,
-#          hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
-#          hormone_therapy_drug_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct() %>%
-#   kbl() %>%
-#   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-#   scroll_box(width = "100%")
+hormone_patients %>%
+  select(deidentified_patient_id,
+         presample_id_hormone,
+         presample_date_hormone,
+         seqsample_id_hormone,
+         seqsample_date_hormone,
+         hormone_stop_T2, time_hormone_seqsample,
+         hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+         hormone_therapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct() %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  scroll_box(width = "100%")
 
-# a <- hormone_patients %>%
-#   filter(!is.na(presample_id_hormone) | !is.na(seqsample_id_hormone)) %>% 
-#   select(mrn, deidentified_patient_id,
-#          presample_id_hormone,
-#          presample_date_hormone,
-#          interval_presample_hormone,
-#          seqsample_id_hormone,
-#          seqsample_date_hormone,
-#          time_hormone_seqsample,
-#          hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
-#          hormone_therapy_drug_1) %>%
-#   group_by(deidentified_patient_id) %>%
-#   fill(everything(), .direction = "updown") %>%
-#   distinct()
-# 
-# write_csv(a, "Samples list hormonetherapy group in breast patients 03012022.csv")
+hor <- hormone_patients %>%
+  filter(!is.na(presample_id_hormone) | !is.na(seqsample_id_hormone)) %>%
+  select(mrn, deidentified_patient_id,
+         presample_id_hormone,
+         presample_date_hormone,
+         interval_presample_hormone,
+         seqsample_id_hormone,
+         seqsample_date_hormone,
+         time_hormone_seqsample,
+         hormone_therapy_start_date_1, hormone_therapy_end_date1_1,
+         hormone_therapy_drug_1) %>%
+  group_by(deidentified_patient_id) %>%
+  fill(everything(), .direction = "updown") %>%
+  distinct()
+
+write_csv(hor, "Samples list hormonetherapy group in breast patients 03112022.csv")
 ```
 
 # Done!!!!!
