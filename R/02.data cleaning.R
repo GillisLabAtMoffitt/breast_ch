@@ -38,13 +38,17 @@ breast_info <- breast_info %>%
   group_by(mrn, party_id, gender_cancer_registry, date_of_birth, gender_derived, gender_cerner) %>%
   summarise_at(vars(date_of_diagnosis, tumor_sequence_number, 
                     clinical_tnm_group_stage, histology, 
-                    tnm_cs_mixed_group_stage), 
+                    tnm_cs_mixed_group_stage,
+                    primary_site_group), 
                str_c, collapse = "; ") %>% 
   ungroup() %>% 
   separate(date_of_diagnosis, paste("date_of_diagnosis", 1:10, sep = ""), 
            sep = "; ", remove = TRUE, 
            extra = "warn", fill = "right") %>% 
   separate(tnm_cs_mixed_group_stage, paste("tnm_cs_mixed_group_stage", 1:10, sep = ""), 
+           sep = "; ", remove = TRUE, 
+           extra = "warn", fill = "right") %>% 
+  separate(primary_site_group, paste("primary_site_group", 1:10, sep = ""), 
            sep = "; ", remove = TRUE, 
            extra = "warn", fill = "right") %>% 
   purrr::keep(~!all(is.na(.)))

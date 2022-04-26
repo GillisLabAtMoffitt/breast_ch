@@ -11,48 +11,12 @@ blood_patients <- read_rds(paste0(here::here(), "/blood_patients.rds"))
 blood_patients <- blood_patients %>%
   # create age
   mutate(age_at_diagnosis = round(interval(start = date_of_birth, end = date_of_diagnosis1)/
-           duration(n = 1, units = "years"), 1)
-         ) #%>%
-  
-  # create treatments cat
-  # mutate(had_treatment = case_when(
-  #   !is.na(chemotherapy_start_date_1) |
-  #     !is.na(hormone_therapy_start_date_1) |
-  #     !is.na(immunotherapy_start_date_1) |
-  #     !is.na(radiation_start_date_1)                                ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_chemo = case_when(
-  #   specimen_collection_date <= chemotherapy_start_date_1           ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_horm = case_when(
-  #   specimen_collection_date <= hormone_therapy_start_date_1        ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_immu = case_when(
-  #   specimen_collection_date <= immunotherapy_start_date_1          ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_rad = case_when(
-  #   specimen_collection_date <= radiation_start_date_1              ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_treatment = case_when(
-  #   specimen_collection_date <= chemotherapy_start_date_1 &
-  #     specimen_collection_date <= hormone_therapy_start_date_1 &
-  #     specimen_collection_date <= immunotherapy_start_date_1 &
-  #     specimen_collection_date <= radiation_start_date_1            ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
-  # mutate(blood_bf_treatment_30days = case_when(
-  #   specimen_collection_date <= (chemotherapy_start_date_1 + days(30)) &
-  #     specimen_collection_date <= (hormone_therapy_start_date_1 + days(30)) &
-  #     specimen_collection_date <= (immunotherapy_start_date_1 + days(30)) &
-  #     specimen_collection_date <= (radiation_start_date_1 + days(30))
-  #   ~ "Yes",
-  #   TRUE                                                            ~ "No"
-  # )) %>% 
+                                    duration(n = 1, units = "years"), 1)
+  ) %>%
+  mutate(age_at_sample = round(interval(start = date_of_birth, end = specimen_collection_date)/
+                                 duration(n = 1, units = "years"), 1)
+  ) %>% 
+  mutate(year_at_sample = year(specimen_collection_date))
   
 write_rds(blood_patients, "blood_patients.rds")
 
