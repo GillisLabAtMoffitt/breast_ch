@@ -1,13 +1,19 @@
 ## WILL USE WHEN GET THE SEQUENCING DATA
 
+# Import library
+library(tidyverse)
+
+# Load data
 blood_patients <- read_rds(paste0(here::here(), "/blood_patients.rds"))
 
+# Create var
 
 blood_patients <- blood_patients %>%
   # create age
   mutate(age_at_diagnosis = round(interval(start = date_of_birth, end = date_of_diagnosis1)/
            duration(n = 1, units = "years"), 1)
          ) #%>%
+  
   # create treatments cat
   # mutate(had_treatment = case_when(
   #   !is.na(chemotherapy_start_date_1) |

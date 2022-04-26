@@ -1171,7 +1171,38 @@ write_rds(Treatment, "Treatment.rds")
 #        "blood_bf_treatment", everything())
 # 
 
-
+# ER/PR/HER----
+ERPRHER <- ERPRHER %>% 
+  filter(!str_detect(group_name, "collected|documented")) %>%
+  mutate(mrn = as.character(mrn),
+         mrn = coalesce(mrn, party_id)) %>% 
+  mutate_at(c("mrn"), ~str_to_sentence(.)) %>% 
+  mutate(ER_PR_status = case_when(
+    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
+      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER-/PR-",
+    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
+      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER-/PR+",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
+      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER+/PR-",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
+      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER+/PR+",
+    str_detect(estrogen_receptor_assay_era, "Negative/normal")                 ~ "ER-",
+    str_detect(progesterone_receptor_assay_pra, "Negative/normal")             ~ "PR-",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated")               ~ "ER+",
+    str_detect(progesterone_receptor_assay_pra, "Positive/elevated")           ~ "PR+",
+  )) %>% 
+  mutate(ER_PR_HER_status = case_when(
+    str_detect(combinations_of_er_pr_and_her2,"Triple Negative")                  ~ "ER-/PR-/HER-",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Negative, HER2 Positive"   ~ "ER-/PR-/HER+",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Negative"   ~ "ER-/PR+/HER-",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Positive"   ~ "ER-/PR+/HER+",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative PR, HER2 Positive"~ "ER+/PR-/HER+",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative, HER2 Negative"   ~ "ER+/PR-/HER-",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Negative"   ~ "ER+/PR+/HER-",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Positive"   ~ "ER+/PR+/HER+",
+  )) %>% 
+  select(mrn, ER_PR_HER_status, ER_PR_status)
+  
 
 
 
@@ -1181,6 +1212,7 @@ write_rds(Treatment, "Treatment.rds")
 Global_data <- #full_join(Demographic, breast_dna, by = "mrn") %>% 
   # full_join(., breast_info1, by = c("mrn", "date_of_birth")) %>% # I checked the date of birth
   left_join(breast_patients, Treatment, by = "mrn") %>% 
+  left_join(., ERPRHER, by = "mrn") %>% 
   # full_join(., chemot, by = "mrn") %>% 
   # full_join(., hormonet, by = "mrn") %>% 
   # full_join(., immnunot, by = "mrn") %>% 
