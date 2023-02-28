@@ -829,6 +829,6 @@ rad <- rad_patients %>%
   fill(everything(), .direction = "updown") %>%
   distinct()
 
-write_csv(rad, "Samples list radiotherapy group in breast patients 01312023.csv")
+write_csv(rad, "Samples list radiotherapy group in breast patients 02272023.csv")
 ```
 <br>
