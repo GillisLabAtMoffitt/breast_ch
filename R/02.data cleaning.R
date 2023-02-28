@@ -23,6 +23,40 @@ breast_dna <- breast_DNA %>%
 
 write_rds(breast_dna, "breast_dna.rds")
 
+# ER/PR/HER----
+ERPRHER <- ERPRHER %>% 
+  filter(!str_detect(group_name, "collected|documented")) %>%
+  mutate(mrn = as.character(mrn),
+         mrn = coalesce(mrn, party_id)) %>% 
+  mutate_at(c("mrn"), ~str_to_sentence(.)) %>% 
+  mutate(ER_PR_status = case_when(
+    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
+      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER-/PR-",
+    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
+      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER-/PR+",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
+      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER+/PR-",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
+      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER+/PR+",
+    str_detect(estrogen_receptor_assay_era, "Negative/normal")                 ~ "ER-",
+    str_detect(progesterone_receptor_assay_pra, "Negative/normal")             ~ "PR-",
+    str_detect(estrogen_receptor_assay_era, "Positive/elevated")               ~ "ER+",
+    str_detect(progesterone_receptor_assay_pra, "Positive/elevated")           ~ "PR+",
+  )) %>% 
+  mutate(ER_PR_HER_status = case_when(
+    str_detect(combinations_of_er_pr_and_her2,"Triple Negative")                  ~ "ER-/PR-/HER-",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Negative, HER2 Positive"   ~ "ER-/PR-/HER+",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Negative"   ~ "ER-/PR+/HER-",
+    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Positive"   ~ "ER-/PR+/HER+",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative PR, HER2 Positive"~ "ER+/PR-/HER+",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative, HER2 Negative"   ~ "ER+/PR-/HER-",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Negative"   ~ "ER+/PR+/HER-",
+    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Positive"   ~ "ER+/PR+/HER+",
+  )) %>% 
+  select(mrn, ER_PR_HER_status, ER_PR_status, histology) %>% 
+  filter(!is.na(ER_PR_status)) %>% 
+  mutate_at("histology", ~str_to_sentence(.)) %>% 
+  distinct()
 
 # Cancer Characteristics----
 breast_info <- breast_info %>%
@@ -33,7 +67,16 @@ breast_info <- breast_info %>%
   mutate(across(where(is.character), ~str_to_sentence(.))) %>% 
   filter(str_detect(primary_site_group, "Breast")) %>%
   distinct(mrn, date_of_diagnosis, .keep_all = TRUE) %>% 
-  arrange(mrn, date_of_diagnosis) %>% 
+  arrange(mrn, date_of_diagnosis)
+
+ERPRHER <- ERPRHER %>% 
+  # Merge with breast info to get date of diagnosis
+  left_join(., breast_info %>% 
+              select(mrn, histology, date_of_diagnosis),
+            by = join_by(mrn, histology))
+
+# Continue to clean cancer characteristics
+breast_info <- breast_info %>% 
   # Summarize to have 1 row per patients
   group_by(mrn, party_id, gender_cancer_registry, date_of_birth, gender_derived, gender_cerner) %>%
   summarise_at(vars(date_of_diagnosis, tumor_sequence_number, 
@@ -80,6 +123,7 @@ breast_patients <- breast_dna %>%
   # Merge with Demographic for patients with samples available
   left_join(., Demographic, 
             c("mrn", "party_id", "date_of_birth"))
+write_rds(breast_patients, "breast_patients.rds")
 
 breast_patients_id <- paste0(breast_patients$mrn, collapse = "|")
 
@@ -875,7 +919,8 @@ treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
   arrange(mrn, treatment_start_date) %>%
   group_by(mrn, treatment_type) %>%
   mutate(treatment_line = row_number(mrn)) %>%
-  unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE)
+  unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE) %>% 
+  ungroup()
 
 Treatment <- full_join(chemot, hormonet, by = "mrn") %>% 
   full_join(., immnunot, by = "mrn") %>% 
@@ -905,7 +950,20 @@ Treatment <- full_join(chemot, hormonet, by = "mrn") %>%
 
 write_rds(Treatment, "Treatment.rds")
 
-
+# Finalize ER, PR, HER2 status
+ERPRHER <- ERPRHER %>% 
+  rename(statusERPRHER_date = date_of_diagnosis) %>% 
+  left_join(., treatment %>% 
+              select(mrn, treatment_start_date) %>% 
+              distinct(mrn, .keep_all = TRUE),
+            by = "mrn") %>% 
+  mutate(int = abs(interval(start = treatment_start_date, end = statusERPRHER_date)/
+           duration(n=1, units = "days"))) %>% 
+  # Select HER+ if a patient also has negativ status for same date and 
+  # same diagnosis aka ex: breast_study_000396
+  arrange(mrn, int, ER_PR_HER_status) %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  select(-c(int, treatment_start_date))
 
 
 
@@ -930,83 +988,6 @@ write_rds(Treatment, "Treatment.rds")
 #   select(mrn, breast_cancer_dx, everything()) %>% 
 #   arrange(mrn, breast_cancer_dx) %>% 
 #   group_by(mrn) %>% 
-#   mutate(breast_cancer_dx = first(breast_cancer_dx)) %>% 
-#   ungroup() %>% 
-#   # Remove patients who never had breast cancer
-#   filter(!is.na(breast_cancer_dx)) %>% 
-#   # was the primary or secondary cancer
-#   mutate(relative_cancer = case_when(
-#     str_detect(primary_site, "BREAST") &
-#       breast_cancer_dx == date_of_diagnosis             ~ "breast",
-#     str_detect(primary_site, "BREAST")                  ~ "recidive",
-#     breast_cancer_dx < date_of_diagnosis                ~ "post-breast cancer",
-#     breast_cancer_dx > date_of_diagnosis                ~ "pre-breast cancer",
-#     breast_cancer_dx == date_of_diagnosis               ~ "diagnosed at the same time"
-#   ))
-# 
-# Second_dx %>% 
-#   filter(relative_cancer != "breast") %>% 
-#   select(cancer_site, relative_cancer) %>% 
-#   tbl_summary(by = relative_cancer)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Second diagnosis
-# Second_dx <- Second_dx %>% 
-#   # mutate(deidentified_patient_id = str_to_lower(deidentified_patient_id)) %>% 
-#   # filter(!str_detect(deidentified_patient_id, breast_patients))
-#   rename(cancer_site = primary_site)
-# # write_rds(Second_dx, "Second_dx.rds")
-# 
-# tbl <- Second_dx %>% 
-#   select(cancer_site) %>% 
-#   tbl_summary(#sort = list(everything() ~ "frequency")
-#   ) %>% as_gt()
-# gt::gtsave(tbl, "Cancer site summary.pdf")
-# 
-# tbl <- Second_dx %>% 
-#   select(histology) %>% 
-#   tbl_summary(#sort = list(everything() ~ "frequency")
-#   ) %>% as_gt()
-# gt::gtsave(tbl, "histology summary.pdf")
-# 
-# 
-# Second_dx <- Second_dx %>% 
-#   # Create a variable for the first breast diagnose for each patient
-#   arrange(deidentified_patient_id, date_of_diagnosis) %>% 
-#   mutate(breast_cancer_dx = case_when(
-#     str_detect(primary_site, "BREAST")                  ~ date_of_diagnosis
-#   )) %>% 
-#   select(deidentified_patient_id, breast_cancer_dx, everything()) %>% 
-#   arrange(deidentified_patient_id, breast_cancer_dx) %>% 
-#   group_by(deidentified_patient_id) %>% 
 #   mutate(breast_cancer_dx = first(breast_cancer_dx)) %>% 
 #   ungroup() %>% 
 #   # Remove patients who never had breast cancer
@@ -1175,37 +1156,7 @@ write_rds(Treatment, "Treatment.rds")
 #        "blood_bf_treatment", everything())
 # 
 
-# ER/PR/HER----
-ERPRHER <- ERPRHER %>% 
-  filter(!str_detect(group_name, "collected|documented")) %>%
-  mutate(mrn = as.character(mrn),
-         mrn = coalesce(mrn, party_id)) %>% 
-  mutate_at(c("mrn"), ~str_to_sentence(.)) %>% 
-  mutate(ER_PR_status = case_when(
-    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
-      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER-/PR-",
-    str_detect(estrogen_receptor_assay_era, "Negative/normal") &
-      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER-/PR+",
-    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
-      str_detect(progesterone_receptor_assay_pra, "Negative/normal")           ~ "ER+/PR-",
-    str_detect(estrogen_receptor_assay_era, "Positive/elevated") &
-      str_detect(progesterone_receptor_assay_pra, "Positive/elevated")         ~ "ER+/PR+",
-    str_detect(estrogen_receptor_assay_era, "Negative/normal")                 ~ "ER-",
-    str_detect(progesterone_receptor_assay_pra, "Negative/normal")             ~ "PR-",
-    str_detect(estrogen_receptor_assay_era, "Positive/elevated")               ~ "ER+",
-    str_detect(progesterone_receptor_assay_pra, "Positive/elevated")           ~ "PR+",
-  )) %>% 
-  mutate(ER_PR_HER_status = case_when(
-    str_detect(combinations_of_er_pr_and_her2,"Triple Negative")                  ~ "ER-/PR-/HER-",
-    combinations_of_er_pr_and_her2 == "ER Negative, PR Negative, HER2 Positive"   ~ "ER-/PR-/HER+",
-    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Negative"   ~ "ER-/PR+/HER-",
-    combinations_of_er_pr_and_her2 == "ER Negative, PR Positive, HER2 Positive"   ~ "ER-/PR+/HER+",
-    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative PR, HER2 Positive"~ "ER+/PR-/HER+",
-    combinations_of_er_pr_and_her2 == "ER Positive, PR Negative, HER2 Negative"   ~ "ER+/PR-/HER-",
-    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Negative"   ~ "ER+/PR+/HER-",
-    combinations_of_er_pr_and_her2 == "ER Positive, PR Positive, HER2 Positive"   ~ "ER+/PR+/HER+",
-  )) %>% 
-  select(mrn, ER_PR_HER_status, ER_PR_status)
+
   
 
 
@@ -1232,13 +1183,13 @@ Global_data <- #full_join(Demographic, breast_dna, by = "mrn") %>%
   unite(deidentified_patient_id, rad:id, sep = "") %>% 
   select(c(deidentified_patient_id, mrn, everything(), -zero))
 
-write_rds(Global_data, "Global_data.rds")
+write_rds(Global_data, "Global_data02282023.rds")
 
 blood_patients <- Global_data %>% 
   # filter to patients who have blood samples
   filter(!is.na(specimen_collection_date))
 
-write_rds(blood_patients, "blood_patients.rds")
+write_rds(blood_patients, "blood_patients02282023.rds")
 
 
 # End cleaning
