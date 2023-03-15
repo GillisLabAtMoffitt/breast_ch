@@ -1,0 +1,95 @@
+---
+title: "Data available"
+author: "Christelle Colin-Leitzinger"
+date: '`r Sys.Date()`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+
+.figure {
+    margin-top: 100px;
+    margin-bottom: 100px;
+}
+
+table {
+    margin-top: 10px;
+    margin-bottom: 25px !important;
+}
+
+<!-- table { -->
+<!--   <!-- margin: auto; --> -->
+<!--   border-top: 1px solid #666; -->
+<!--   border-bottom: 1px solid #666; -->
+<!-- } -->
+<!-- table thead th { border-bottom: 1px solid #ddd; } -->
+th, td { padding: 5px; }
+
+<!-- tr:nth-of-type(3n+0) { -->
+<!--   background: red; -->
+<!-- } -->
+<!-- tr:5:nth-child(0n+1) { -->
+<!--   background: red; -->
+<!-- } -->
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      # fig.width = 7, fig.height = 5, 
+                      fig.align='center'#, fig.show='hold'
+                      )
+options(gtsummary.print_engine = "gt")
+options(gtsummary.as_gt.addl_cmds = "gt::tab_options(table.font.size = 14, data_row.padding = gt::px(1))")
+```
+
+```{r library}
+library(tidyverse)
+library(lubridate)
+library(gtsummary)
+```
+
+```{r}
+blood_patients <- 
+  read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
+
+breast_data_with_blood <- read_rds(paste0(here::here(), "/breast_data_with_blood.rds"))
+```
+
+# I. Data Exploration
+```{r}
+breast_data_with_blood %>% 
+  select(age_at_diagnosis, race,
+         ethnicity,
+         contains("cause"),
+         csv_vital_status_cerner) %>% 
+  tbl_summary()
+
+
+breast_data_with_blood %>% 
+  select(clinical_tnm_group_stage,
+         contains("tnm"),
+         contains("histology"),
+         ER_PR_status, ER_PR_HER_status) %>% 
+  tbl_summary()
+
+breast_data_with_blood %>% 
+  select(marital_status_current,
+         csv_what_is_the_last_grade_or_level_of_school_you_have_completed,
+         csv_what_is_your_current_occupation_examples_secondary_school_teacher_civil_engineer_computer_analyst_building_supervisor_lathe_operator_truck_driver_or_licensed_practical_nurse,
+         csv_what_was_your_occupation_at_your_former_job_examples_secondary_school_teacher_civil_engineer_computer_analyst_building_supervisor_lathe_operator_truck_driver_or_licensed_practical_nurse_between_jobs) %>% 
+  tbl_summary()
+
+```
