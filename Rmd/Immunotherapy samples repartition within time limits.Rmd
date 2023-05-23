@@ -1,0 +1,210 @@
+---
+title: "Immunotherapy Samples"
+author: "Christelle Colin-Leitzinger"
+date: '`r Sys.Date()`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+
+.figure {
+    margin-top: 100px;
+    margin-bottom: 100px;
+}
+
+table {
+    margin-top: 10px;
+    margin-bottom: 25px !important;
+}
+
+th, td { padding: 5px; }
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library}
+library(tidyverse)
+library(data.table)
+library(VennDiagram)
+library(lubridate)
+library(gtsummary)
+library(viridis)
+library(ggforce)
+library(kableExtra)
+theme_set(theme_classic())
+theme_gtsummary_compact()
+```
+
+```{r}
+blood_patients <- 
+  read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
+```
+
+# I. Overall Data Selection
+## Sample types selection
+- collection_site_tissue_type == blood
+- sample_type == Buffy Coat, Genomic DNA, MNC, MNC less CD138+, Unprocessed Liquid Tissue
+
+## Patient characteristics
+- primary_site_group == "Breast" (keep only breast diagnosis date)
+
+# II. Repartition of Samples Before and After Immunotherapy within Time Limits
+
+We didn't select the samples depending hormonetherapy.
+
+Summary criteria for sample selection:  
+
+* Immunotherapy:  
+  + Pre-sample must be closest to Immunotherapy start from -365 days to Immunotherapy date 
+     + also needs to be before chemo or no chemo was given, before radiation or no radiation was given   
+  + Sequential sample must be after Immunotherapy end  
+     + also needs to be before chemo or no chemo was given, before radiation or no radiation was given  
+
+We can change these criteria if we want to add more samples.  
+```{r}
+blood_patients <- blood_patients %>%
+  mutate(blood_bf_immuno = case_when(
+    specimen_collection_date <= (immunotherapy_start_date_1 - days(365))  ~ "too early",
+    specimen_collection_date <= (immunotherapy_start_date_1 + days(5)) &
+      (immunotherapy_start_date_1 <= chemotherapy_start_date_1 |
+         is.na(chemotherapy_start_date_1)) &
+      (specimen_collection_date <= radiation_start_date_1 |
+      is.na(radiation_start_date_1))                                     ~ "Yes",
+    specimen_collection_date > immunotherapy_start_date_1                 ~ "No",
+    is.na(immunotherapy_start_date_1)                                     ~ "not administred",
+    TRUE                                                                 ~ "No"
+  )) %>%
+  mutate(across(contains("blood_bf_"), ~ factor(., levels = c("Yes", "No", "not administred")))) %>%
+
+  arrange(mrn, deidentified_patient_id, specimen_collection_date) %>%
+  select(mrn, deidentified_patient_id, specimen_collection_date,
+         "blood_bf_immuno", immunotherapy_start_date_1, chemotherapy_start_date_1, radiation_start_date_1,
+         everything())
+```
+
+
+```{r code pre and sequential}
+blood_patients2 <- blood_patients %>% 
+  ###### Chemo samples ----
+  mutate(had_good_sample_immuno = case_when(
+    blood_bf_immuno == "Yes"                    ~ "Yes"
+  )) %>%
+  group_by(deidentified_patient_id, had_good_sample_immuno) %>%
+  mutate(closest_immuno_presample_date = case_when(
+    had_good_sample_immuno == "Yes"            ~ last(specimen_collection_date)
+  )) 
+
+blood_patients3 <- blood_patients2 %>%
+  mutate(interval_presample_immuno = case_when(
+    closest_immuno_presample_date == specimen_collection_date  ~ 
+      (interval(start = closest_immuno_presample_date, end = immunotherapy_start_date_1) /
+                 duration(n = 1, units = "days"))
+  )) %>%
+  mutate(presample_id_immuno = case_when(
+    !is.na(interval_presample_immuno)       ~ sample_id
+  )) %>% 
+  mutate(presample_date_immuno = case_when(
+    !is.na(presample_id_immuno)                                     ~ specimen_collection_date
+  )) 
+
+blood_patients4 <- blood_patients3 %>% 
+  
+  # Find sequential samples
+  mutate(presample_immuno_within_limits = had_good_sample_immuno) %>% 
+  group_by(deidentified_patient_id) %>%
+  fill(presample_immuno_within_limits, #interval_presample_immuno,
+       closest_immuno_presample_date, .direction = "updown") %>%
+
+  mutate(seq_sample_immuno = case_when(
+    presample_immuno_within_limits == "Yes" &
+      blood_bf_immuno == "No" &
+      specimen_collection_date >= immunotherapy_end_date1_1 &
+      (specimen_collection_date <= chemotherapy_start_date_1 |
+         is.na(chemotherapy_start_date_1)) &
+      (specimen_collection_date <= radiation_start_date_1 |
+      is.na(radiation_start_date_1))                                ~ "Yes",
+    TRUE                                                            ~ "No"
+  )) %>%
+  group_by(mrn, seq_sample_immuno) %>% 
+  mutate(is_first_seq_sample = case_when(
+    seq_sample_immuno == "Yes" &
+    specimen_collection_date == first(specimen_collection_date)     ~ "Yes",
+    TRUE                                                            ~ "No"
+  )) %>% 
+  ungroup() %>% 
+  
+  mutate(seqsample_id_immuno = case_when(
+    is_first_seq_sample == "Yes"                                    ~ sample_id
+  )) %>% 
+  
+  mutate(seqsample_date_immuno = case_when(
+    !is.na(seqsample_id_immuno)                                     ~ specimen_collection_date
+  )) %>% 
+  mutate(seqsample_before_2nd_regimen = case_when(
+    !is.na(seqsample_id_immuno) &
+      specimen_collection_date <= immunotherapy_start_date_2        ~ "sample before 2nd regimen",
+    !is.na(seqsample_id_immuno) &
+      specimen_collection_date > immunotherapy_start_date_2         ~ "sample after"
+  )) %>% 
+  mutate(have_good_seqsample_immuno = case_when(
+    seq_sample_immuno == "Yes"                                       ~ "Yes"
+  )) %>% 
+  fill(have_good_seqsample_immuno, .direction = "updown") %>% 
+  mutate(time_immuno_seqsample = case_when(
+    seq_sample_immuno == "Yes"        ~ (
+      interval(start = immunotherapy_start_date_1, end = specimen_collection_date) /
+        duration(n= 1, units = "days")
+    ))) %>%
+  mutate(interval_prepost_sample_immuno = case_when(
+    !is.na(seqsample_id_immuno)                                     ~
+      abs(interval(start = closest_immuno_presample_date, end = specimen_collection_date) /
+                 duration(n = 1, units = "days"))
+  )) 
+
+blood_patients2 <- blood_patients4 %>%
+  mutate(across(where(is.numeric), ~ round(., 2)))
+
+```
+
+# III. Patients with Blood before and after radiotharapy
+## 1. Patients table 
+```{r}
+tbl1_1 <-
+  blood_patients2 %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>%
+  select(Immunotherapy = presample_immuno_within_limits) %>%
+  tbl_summary(statistic = list(all_categorical() ~ "{n}")) %>%
+  modify_header(update = list(
+  stat_0 ~ '**Patients with Blood before Immunotherapy**'
+))
+tbl1_2 <- blood_patients2 %>%
+#   filter(!is.na(seqsample_id_immuno)) %>%
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>%
+  select(Immunotherapy = seq_sample_immuno) %>%
+  tbl_summary(statistic = list(all_categorical() ~ "{n}"))%>%
+  modify_header(update = list(
+  stat_0 ~ '**Patients with Sequential Blood after Immunotherapy**'
+))
+
+tbl_merge(list(tbl1_1, tbl1_2)) %>%
+   modify_header(list(label ~ "**Treatment Type**")) %>%
+  modify_spanning_header(everything() ~ NA_character_)
+
+```
