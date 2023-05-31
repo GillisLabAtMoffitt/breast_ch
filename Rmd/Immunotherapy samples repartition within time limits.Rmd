@@ -74,7 +74,7 @@ Summary criteria for sample selection:
 * Immunotherapy:  
   + Pre-sample must be closest to Immunotherapy start from -365 days to Immunotherapy date 
      + also needs to be before chemo or no chemo was given, before radiation or no radiation was given   
-  + Sequential sample must be after Immunotherapy end  
+  + Sequential sample must be after 365 days from Immunotherapy start  
      + also needs to be before chemo or no chemo was given, before radiation or no radiation was given  
 
 We can change these criteria if we want to add more samples.  
@@ -135,7 +135,7 @@ blood_patients4 <- blood_patients3 %>%
   mutate(seq_sample_immuno = case_when(
     presample_immuno_within_limits == "Yes" &
       blood_bf_immuno == "No" &
-      specimen_collection_date >= immunotherapy_end_date1_1 &
+      specimen_collection_date >= (immunotherapy_start_date_1 + days(365)) &
       (specimen_collection_date <= chemotherapy_start_date_1 |
          is.na(chemotherapy_start_date_1)) &
       (specimen_collection_date <= radiation_start_date_1 |
