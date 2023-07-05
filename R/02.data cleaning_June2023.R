@@ -16,7 +16,7 @@ breast_dna <- breast_DNA %>%
   summarise_at(vars(sample_id), str_c, collapse = "; ") %>%
   ungroup()
 
-write_rds(breast_dna, "breast_dna_06202023.rds")
+write_rds(breast_dna, "breast_dna_06272023.rds")
 
 # ER/PR/HER----
 breast_marker_1 <- breast_marker_1 %>% 
@@ -183,7 +183,7 @@ breast_info <- breast_info %>%
                        cols_remove = TRUE) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
   mutate(across(starts_with("date_of_diagnosis"), ~ as.Date(.))) %>% 
-  select(-dx_count)
+  select(-c(dx_count, last_contact_or_death_dt)) # last_contact_or_death_dt has less rows than in vitals data
 
 breast_info <- breast_info %>% 
   # Merge with markers to have marker status related to the first breast tumor diagnosed
@@ -209,6 +209,13 @@ smoking <- smoking %>%
   select(patient_id, smoking_status)
 
 
+# Vitals----
+vitals <- vitals %>% 
+  mutate(new_last_date = as.Date(last_contact_or_death_dt, origin = "1899-12-30")) %>% 
+  select(patient_id, new_vital_status = cons_derived_vital_status_desc,
+         new_last_date)
+  
+
 rm(breast_DNA, breast_marker)
 
 
@@ -219,9 +226,11 @@ breast_patients <- breast_dna %>%
   # Merge with Demographic for patients with samples available
   left_join(., Demographic, 
             c("patient_id")) %>% 
+  left_join(., vitals, 
+           c("patient_id")) %>% 
   left_join(., smoking, 
             by= c("patient_id"))
-write_rds(breast_patients, "breast_patients_06202023.rds")
+write_rds(breast_patients, "breast_patients_06272023.rds")
 
 breast_patients_id <- paste0(breast_patients$mrn, collapse = "|")
 
@@ -261,9 +270,7 @@ Chemot <- treatment %>%
   # Limit to Breast cancer patients
   # filter(str_detect(patient_id, breast_patients_id)) %>% 
   filter(!is.na(treatment_start_dt) | !is.na(treatment_drug_desc) |
-           treatment_rx_summary_desc == "MULTI-AGENT CHEMO") %>% 
-  # Make it easier to not have na for future filtering, rescue the ones with a drug name
-  mutate(chemo_given = "chemo given")
+           treatment_rx_summary_desc == "MULTI-AGENT CHEMO")
 
 Chemot1 <- Chemot %>% 
   # Create a really early date to add to NAs date to make sure to exclude these patients
@@ -272,7 +279,7 @@ Chemot1 <- Chemot %>%
                     as.Date("1700-01-01", origin = "1899-12-30"))) %>%
   distinct(patient_id, treatment_drug_desc, 
            treatment_start_dt, treatment_end_dt, 
-           chemo_given, .keep_all = TRUE) %>% 
+           .keep_all = TRUE) %>% 
   mutate(across(where(is.character), ~str_to_lower(.)))
 
 Chemot2 <- Chemot1 %>%
@@ -404,25 +411,30 @@ Chemot <- Chemot2 %>%
   distinct(patient_id, treatment_drug_desc, treatment_start_dt, treatment_end_dt1, 
            .keep_all = TRUE) %>%  # 705976
   # select(-c(remove, date_of_diagnosis1, AC, AC_start_date, paclitaxel, pac_end_date)) %>% 
-  mutate(linenumber = row_number())
+  # mutate(linenumber = row_number()) %>% 
+  select(patient_id, chemotherapy_drug = treatment_drug_desc, 
+         chemotherapy_start_date = treatment_start_dt, 
+         chemotherapy_end_date = treatment_end_dt1,
+         everything(),
+         -c(date_of_diagnosis1, remove))
   
 
 # pivot wider, use dcast bc better to keep date class
 chemot <- dcast(setDT(Chemot), patient_id ~ rowid(patient_id),
                 value.var = c(
-                  "treatment_drug_desc",
-                  "treatment_start_dt",
-                  "treatment_end_dt1",
+                  "chemotherapy_drug",
+                  "chemotherapy_start_date",
+                  "chemotherapy_end_date",
                   "line_gap"
                 )) %>% 
-  select(patient_id, starts_with("treatment_drug_desc"),
+  select(patient_id, starts_with("chemotherapy_drug"),
          starts_with("chemotherapy_start"),
          starts_with("chemotherapy_end"),
          line_gap_1)
 
 Chemot <- Chemot %>%
-  select(patient_id, treatment_start_date = treatment_start_dt,
-         treatment_end_date = treatment_end_dt1, treatment = treatment_drug_desc) %>%
+  select(patient_id, treatment_start_date = chemotherapy_start_date,
+         treatment_end_date = chemotherapy_end_date, treatment = chemotherapy_drug) %>%
   mutate(treatment_type = "chemo")
 
 
@@ -435,9 +447,7 @@ Hormonet <- treatment %>%
   # Transform number to date and 12:00:00 am character as NA
   filter(!is.na(treatment_start_dt) | !is.na(treatment_drug_desc) |
            treatment_rx_summary_desc == "HORMONE ADMINISTERED" |
-           treatment_rx_summary_desc == "RECOMMENDED, UNK IF GIVEN") %>% 
-  # Make it easier to not have na for future filtering, rescue the ones with a drug name
-  mutate(chemo_given = "hormone given")
+           treatment_rx_summary_desc == "RECOMMENDED, UNK IF GIVEN")
 
 Hormonet1 <- Hormonet %>% 
   # Create a really early date to add to NAs date to make sure to exclude these patients
@@ -446,7 +456,7 @@ Hormonet1 <- Hormonet %>%
                     as.Date("1700-01-01", origin = "1899-12-30"))) %>%
   distinct(patient_id, treatment_drug_desc, 
            treatment_start_dt, treatment_end_dt, 
-           chemo_given, .keep_all = TRUE) %>% 
+           .keep_all = TRUE) %>% 
   mutate(across(where(is.character), ~str_to_lower(.)))
 
 Hormonet2 <- Hormonet1 %>%
@@ -478,18 +488,23 @@ Hormonet2 <- Hormonet1 %>%
     treatment_start_dt < date_of_diagnosis1             ~ "remove",
     TRUE                                                     ~ NA_character_
   )) %>% 
-  filter(is.na(remove))
+  filter(is.na(remove)) %>% 
+  select(patient_id, hormone_drug = treatment_drug_desc, 
+         hormone_start_date = treatment_start_dt, 
+         hormone_end_date = treatment_end_dt1,
+         everything(),
+         -c(date_of_diagnosis1, remove))
 
 hormonet <- dcast(setDT(Hormonet2), patient_id ~ rowid(patient_id),
                   value.var = c(
-                    "treatment_drug_desc",
-                    "treatment_start_dt",
-                    "treatment_end_dt1"
+                    "hormone_drug",
+                    "hormone_start_date",
+                    "hormone_end_date"
                   ))
 
 Hormonet <- Hormonet2 %>%
-  select(patient_id, treatment_start_dt,
-         treatment_end_dt = treatment_end_dt1, treatment = treatment_drug_desc) %>%
+  select(patient_id, treatment_start_date = hormone_start_date,
+         treatment_end_date = hormone_end_date, treatment = hormone_drug) %>%
   mutate(treatment_type = "hormone")
 
 
@@ -499,131 +514,59 @@ Immnunot <- treatment %>%
   filter(treatment_type == "IMMUNO") %>% 
   # Limit to Breast cancer patients
   # filter(str_detect(patient_id, breast_patients_id)) %>% 
-  # Transform number to date and 12:00:00 am character as NA
-  mutate(across(ends_with("date"), ~ as.Date(as.numeric(.), 
-                                             origin = "1899-12-30"))) %>% 
-  # No 2300 date
-  mutate(across(where(is.character), ~str_to_lower(.))) %>% 
-  # Remove no hormone given in immunotherapy_drug
-  # filter(immunotherapy_drug != "no  given" | is.na(immunotherapy_drug)) %>% 
-  # remove rows with no drugs info
-  filter_at(vars(immunotherapy_drug, immunotherapy_start_date,
-                 immunotherapy_end_date), any_vars(!is.na(.)))
-
-# Check patient CONTRAINDICATED, NONE, NOT PLANNED, REFUSED
-check <- Immnunot %>% 
-  filter(str_detect(immunotherapy_type, "contraindicated|none, not planned|refused|dc only")) %>% 
-  arrange(immunotherapy_type)
-write_csv(check, paste0(path, "/sanity check/Immuno contraindicated|none, not planned|refused patients.csv"))
+  filter(!is.na(treatment_start_dt) | !is.na(treatment_drug_desc) |
+           treatment_rx_summary_desc == "RECOMMENDED,UNKN IF GIVEN")
 
 Immnunot1 <- Immnunot %>% 
-  # remove the chemo_type CONTRAINDICATED, PT DIED, RECOMMENDED, NOT GIVEN, "REFUSED"
-  filter(immunotherapy_type == "immuno administered" |
-           immunotherapy_type == "none, not planned" |
-           immunotherapy_type == "contraindicated" |
-           immunotherapy_type == "unknown; dc only" |
-           immunotherapy_type == "recommended, unk if given"
-  )
-
-# check <- Immnunot1 %>% 
-#   filter(str_detect(immunotherapy_start_date, "12:00:00 am"))
-# write_csv(check, paste0(path, "/sanity check/immuno patients with 12:00:00 am dates.csv"))
-
-
-Immnunot1 <- Immnunot1 %>% 
-  # Clean contraindicated and none, not planned
-  mutate(remove = case_when(
-    immunotherapy_type == "contraindicated" &
-      (is.na(immunotherapy_drug) & 
-         is.na(immunotherapy_start_date))                        ~ 1,
-    immunotherapy_type == "none, not planned" &
-      (is.na(immunotherapy_drug) & 
-         is.na(immunotherapy_start_date))                        ~ 1,
-    TRUE                                                         ~ 0
-  )) %>% 
-  filter(remove == 0) %>% 
   # Create a really early date to add to NAs date to make sure to exclude these patients
-  mutate(immunotherapy_start_date =
-           coalesce(immunotherapy_start_date,
+  mutate(treatment_start_dt =
+           coalesce(treatment_start_dt,
                     as.Date("1700-01-01", origin = "1899-12-30"))) %>%
-
-  # mutate(immunotherapy_drug = case_when(
-  #   is.na(immunotherapy_start_date) &
-  #     !is.na(immunotherapy_drug)                             ~ "unk drug, NA date",
-  #   str_detect(immunotherapy_start_date, "12:00:00 am") &
-  #     is.na(immunotherapy_drug)                              ~ "unk drug, 1800 date",
-  #   !is.na(immunotherapy_start_date) &
-  #     is.na(immunotherapy_drug)                              ~ "unk drug, known date",
-  # )) %>% 
-  # filter(!is.na(immunotherapy_drug)) %>% 
-  # # Dates
-  # # remove the data 18.., 23..
-  # mutate(immunotherapy_start_date = case_when(
-  #   str_detect(immunotherapy_start_date, "12:00:00 am")       ~ NA_character_,
-  #   TRUE                                                     ~ immunotherapy_start_date
-  # ), 
-  # immunotherapy_start_date = as.Date(as.numeric(immunotherapy_start_date), 
-  #                                    origin = "1899-12-30")
-  # ) %>% 
-  # mutate(immunotherapy_end_date = case_when(
-  #   str_detect(immunotherapy_end_date, "12:00:00 am")         ~ NA_character_,
-  #   TRUE                                                     ~ immunotherapy_end_date
-  # ), 
-  # immunotherapy_end_date = as.Date(as.numeric(immunotherapy_end_date),
-  #                                  origin = "1899-12-30")
-  # ) %>% 
-# mutate(immunotherapy_start_date = case_when(
-#   str_detect(immunotherapy_start_date, "12:00:00 am")       ~ NA_character_,
-#   TRUE                                                     ~ immunotherapy_start_date
-# ), 
-# immunotherapy_start_date = as.Date(as.numeric(immunotherapy_start_date), 
-#                                    origin = "1899-12-30")
-# ) %>% 
-# mutate(immunotherapy_end_date = case_when(
-#   str_detect(immunotherapy_end_date, "12:00:00 am")         ~ NA_character_,
-#   TRUE                                                     ~ immunotherapy_end_date
-# ), 
-# immunotherapy_end_date = as.Date(as.numeric(immunotherapy_end_date),
-#                                  origin = "1899-12-30")
-# ) %>% 
-#
-  # # Start pivot
-  # select(patient_id, immunotherapy_drug, immunotherapy_start_date, immunotherapy_end_date) %>% 
-  distinct(patient_id, immunotherapy_drug, immunotherapy_start_date, immunotherapy_end_date, .keep_all = TRUE)
+  distinct(patient_id, treatment_drug_desc, 
+           treatment_start_dt, treatment_end_dt, 
+           .keep_all = TRUE) %>% 
+  mutate(across(where(is.character), ~str_to_lower(.)))
 
 Immnunot <- Immnunot1 %>%
-  arrange(patient_id, immunotherapy_start_date, immunotherapy_drug) %>% 
-  group_by(patient_id, immunotherapy_start_date) %>%
-  summarise_at(vars(immunotherapy_drug, immunotherapy_end_date), str_c, collapse = "; ") %>% 
+  arrange(patient_id, treatment_start_dt, treatment_drug_desc) %>% 
+  # Combine drugs into regimen
+  group_by(patient_id, treatment_start_dt) %>%
+  summarise_at(vars(treatment_drug_desc, treatment_end_dt), 
+               str_c, collapse = "; ") %>% 
   ungroup() %>% 
-  separate(immunotherapy_end_date, paste("immunotherapy_end_date", 10:1, sep = ""), 
-           sep = ";", remove = TRUE, 
+  separate(treatment_end_dt, paste("treatment_end_dt", 10:1, sep = ""), 
+           sep = "; ", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  mutate(across(starts_with("immunotherapy_end_date"), ~ as.Date(.))) %>% 
+  mutate(across(starts_with("treatment_end_dt"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
+  
   # Remove drugs that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(patient_id, .keep_all = TRUE) %>% 
               select(patient_id, date_of_diagnosis1), by= "patient_id") %>% 
   mutate(remove = case_when(
-    immunotherapy_start_date < date_of_diagnosis1             ~ "remove",
+    treatment_start_dt < date_of_diagnosis1             ~ "remove",
     TRUE                                                     ~ NA_character_
   )) %>% 
   filter(is.na(remove)) %>% 
-  select(-remove, -date_of_diagnosis1)
+  select(patient_id, immunotherapy_drug = treatment_drug_desc, 
+         immunotherapy_start_date = treatment_start_dt, 
+         immunotherapy_end_date = treatment_end_dt1,
+         everything(),
+         -c(date_of_diagnosis1, remove))
 
 
 immnunot <- dcast(setDT(Immnunot), patient_id ~ rowid(patient_id),
                   value.var = c(
                     "immunotherapy_drug",
                     "immunotherapy_start_date",
-                    "immunotherapy_end_date1"
+                    "immunotherapy_end_date"
                   ))
 
 Immnunot <- Immnunot %>%
   select(patient_id, treatment_start_date = immunotherapy_start_date,
-         treatment_end_date = immunotherapy_end_date1, treatment = immunotherapy_drug) %>%
+         treatment_end_date = immunotherapy_end_date, treatment = immunotherapy_drug) %>%
   mutate(treatment_type = "immunoT")
 
 
@@ -632,153 +575,59 @@ Immnunot <- Immnunot %>%
 Radiot <- treatment %>% 
   filter(treatment_type == "RADIATION") %>% 
   # Limit to Breast cancer patients
-  filter(str_detect(patient_id, breast_patients_id)) %>% 
-  # Transform number to date and 12:00:00 am character as NA
-  mutate(across(ends_with("date"), ~ as.Date(as.numeric(.), 
-                                             origin = "1899-12-30"))) %>% 
-  # Fix the 2300 dates
-  mutate(radiation_start_date = case_when(
-    str_detect(radiation_start_date, "2300")                      ~ NA_Date_,
-    TRUE                                                          ~ radiation_start_date
-  )) %>% 
-  mutate(across(where(is.character), ~str_to_lower(.))) %>% 
-  # remove rows with no rad info
-  filter(!is.na(boost_dose_c_gy) | !is.na(radiation_start_date),
-         !is.na(radiation_end_date) | 
-         radiation_location_of_rx != "no radiation therapy")
-
-# Check patient CONTRAINDICATED, NONE, NOT PLANNED, REFUSED
-check <- Radiot %>% 
-  filter(str_detect(reason_for_no_radiation, "contraindicated|autopsy|refused|dco")) %>% 
-  arrange(reason_for_no_radiation)
-write_csv(check, paste0(path, "/sanity check/Rad contraindicated|autopsy|refused|dco patients.csv"))
+  # filter(str_detect(patient_id, breast_patients_id)) %>% 
+  filter(!is.na(treatment_start_dt) | !is.na(treatment_end_dt) |
+           reason_for_no_treatment_desc == "reason_for_no_treatment_desc")
 
 Radiot1 <- Radiot %>% 
-  # remove the PT DIED, RECOMMENDED, NOT GIVEN, "REFUSED"
-  filter(reason_for_no_radiation == "rad therapy performed" |
-           # reason_for_no_radiation == "not recommended/autopsy" |
-           reason_for_no_radiation == "recommended, unk if given" |
-           reason_for_no_radiation == "radiation contraindicated" |
-           reason_for_no_radiation == "unknown/dco"
-  )
-
-# check <- Radiot1 %>% 
-#   filter(str_detect(radiation_start_date, "12:00:00 am"))
-# write_csv(check, paste0(path, "/sanity check/Rad patients with 12:00:00 am dates.csv"))
-
-
-Radiot1 <- Radiot1 %>% 
-  # Clean contraindicated and none, not planned
-  mutate(remove = case_when(
-    reason_for_no_radiation == "radiation contraindicated" &
-      is.na(radiation_start_date)                                 ~ 1,
-    TRUE                                                          ~ 0
-  )) %>% 
-  filter(remove == 0) %>% 
   # Create a really early date to add to NAs date to make sure to exclude these patients
-  mutate(radiation_start_date =
-           coalesce(radiation_start_date,
+  mutate(treatment_start_dt =
+           coalesce(treatment_start_dt,
                     as.Date("1700-01-01", origin = "1899-12-30"))) %>%
+  distinct(patient_id, treatment_drug_desc, 
+           treatment_start_dt, treatment_end_dt, 
+           .keep_all = TRUE) %>% 
+  mutate(across(where(is.character), ~str_to_lower(.)))
 
-  # mutate(data_unk = case_when(
-  #   str_detect(radiation_start_date, "12:00:00 am") &
-  #     !is.na(boost_dose_c_gy)                             ~ "known dose, 1800 date",
-  #   !is.na(radiation_start_date) &
-  #     !is.na(boost_dose_c_gy)                             ~ "known dose",
-  #   is.na(radiation_start_date) &
-  #     !is.na(boost_dose_c_gy)                             ~ "unk dose, NA date",
-  #   str_detect(radiation_start_date, "12:00:00 am") &
-  #     is.na(boost_dose_c_gy)                              ~ "unk dose, 1800 date",
-  #   !is.na(radiation_start_date) &
-  #     is.na(boost_dose_c_gy)                              ~ "unk dose, known date",
-  # )) %>% 
-  # filter(!is.na(data_unk)) %>% 
-  # # Dates
-  # # remove the data 18.., 23..
-  # mutate(radiation_start_date = case_when(
-  #   str_detect(radiation_start_date, "12:00:00 am")       ~ NA_character_,
-  #   TRUE                                                     ~ radiation_start_date
-  # ), 
-  # radiation_start_date = as.Date(as.numeric(radiation_start_date), 
-  #                                origin = "1899-12-30")
-  # ) %>% 
-  # mutate(radiation_end_date = case_when(
-  #   str_detect(radiation_end_date, "12:00:00 am")         ~ NA_character_,
-  #   TRUE                                                     ~ radiation_end_date
-  # ), 
-  # radiation_end_date = as.Date(as.numeric(radiation_end_date), ################################################ Fix bug create a 2300 date, lubridate::origin
-  #                              origin = "1899-12-30")
-  # ) %>% 
-  # Create a really early date to add to NAs date to make sure to exclude these patients
-# )) %>% 
-# filter(!is.na(data_unk)) %>% 
-# # Dates
-# # remove the data 18.., 23..
-# mutate(radiation_start_date = case_when(
-#   str_detect(radiation_start_date, "12:00:00 am")       ~ NA_character_,
-#   TRUE                                                     ~ radiation_start_date
-# ), 
-# radiation_start_date = as.Date(as.numeric(radiation_start_date), 
-#                                origin = "1899-12-30")
-# ) %>% 
-# mutate(radiation_end_date = case_when(
-#   str_detect(radiation_end_date, "12:00:00 am")         ~ NA_character_,
-#   TRUE                                                     ~ radiation_end_date
-# ), 
-# radiation_end_date = as.Date(as.numeric(radiation_end_date), ################################################ Fix bug create a 2300 date, lubridate::origin
-#                              origin = "1899-12-30")
-# ) %>% 
-# Create a really early date to add to NAs date to make sure to exclude these patients
-
-  # mutate(treatment_unk = case_when(
-  #   str_detect(radiation_start_date, "2300|2301")             ~ "Unknown when and if given 2300",
-  #   TRUE                                                      ~ NA_character_
-  # )) %>%
-   # 3,647 dates created
-  # mutate(boost_dose_c_gy = coalesce(treatment_unk, as.character(boost_dose_c_gy), data_unk)) %>% 
-  # mutate(radiation_start_date = case_when(
-  #   str_detect(radiation_start_date, "2300|2301")             ~ as.Date("1700-01-01", origin = "1899-12-30"),
-  #   TRUE                                                      ~ radiation_start_date
-  # )) %>%
-  # 
-  # # Start pivot
-  # select(patient_id, boost_dose_c_gy, radiation_start_date, radiation_end_date) %>% 
-  distinct(patient_id, boost_dose_c_gy, radiation_start_date, radiation_end_date, .keep_all = TRUE)
-
-Radiot <- Radiot1 %>%
-  arrange(patient_id, radiation_start_date) %>% 
-  group_by(patient_id, radiation_start_date) %>%
-  summarise_at(vars(boost_dose_c_gy, radiation_end_date), str_c, collapse = "; ") %>% 
+Radiot2 <- Radiot1 %>% 
+  arrange(patient_id, treatment_start_dt, treatment_drug_desc) %>% 
+  # Combine drugs into regimen
+  group_by(patient_id, treatment_start_dt) %>%
+  summarise_at(vars(treatment_drug_desc, treatment_end_dt), 
+               str_c, collapse = "; ") %>% 
   ungroup() %>% 
-  separate(radiation_end_date, paste("radiation_end_date", 10:1, sep = ""), 
-           sep = ";", remove = TRUE, 
+  separate(treatment_end_dt, paste("treatment_end_dt", 10:1, sep = ""), 
+           sep = "; ", remove = TRUE, 
            extra = "warn", fill = "left") %>% 
-  mutate(across(starts_with("radiation_end_date"), ~ as.Date(.))) %>% 
+  mutate(across(starts_with("treatment_end_dt"), ~ as.Date(.))) %>% 
   purrr::keep(~!all(is.na(.))) %>% 
-  # Remove rad that are before breast diagnosis
+  
+  # Remove drugs that are before breast diagnosis
   left_join(., 
             breast_patients %>% 
               distinct(patient_id, .keep_all = TRUE) %>% 
               select(patient_id, date_of_diagnosis1), by= "patient_id") %>% 
   mutate(remove = case_when(
-    radiation_start_date < date_of_diagnosis1                 ~ "remove",
+    treatment_start_dt < date_of_diagnosis1             ~ "remove",
     TRUE                                                     ~ NA_character_
   )) %>% 
   filter(is.na(remove)) %>% 
-  select(-remove, -date_of_diagnosis1)
+  select(patient_id,
+         radiation_start_date = treatment_start_dt, 
+         radiation_end_date = treatment_end_dt1,
+         everything(),
+         -c(date_of_diagnosis1, remove))
 
-
-radiot <- dcast(setDT(Radiot), patient_id ~ rowid(patient_id),
+radiot <- dcast(setDT(Radiot2), patient_id ~ rowid(patient_id),
                 value.var = c(
-                  "boost_dose_c_gy",
                   "radiation_start_date",
-                  "radiation_end_date1"
+                  "radiation_end_date"
                 )
 )
 
-Radiot <- Radiot %>%
+Radiot <- Radiot2 %>%
   select(patient_id, treatment_start_date = radiation_start_date,
-         treatment_end_date = radiation_end_date1, treatment = boost_dose_c_gy) %>%
+         treatment_end_date = radiation_end_date) %>%
   mutate(treatment_type = "radioT")
 
 
@@ -794,31 +643,25 @@ treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
 
 Treatment <- full_join(chemot, hormonet, by = "patient_id") %>% 
   full_join(., immnunot, by = "patient_id") %>% 
-  full_join(., radiot, by = "patient_id") %>% 
-  mutate(had_chemo = case_when(
-    !is.na(treatment_start_dt_1) ~ "Yes"
-  )) %>% 
-  mutate(had_hormone = case_when(
-    !is.na(hormone_therapy_start_date_1) ~ "Yes"
-  )) %>% 
-  mutate(had_immuno = case_when(
-    !is.na(immunotherapy_start_date_1) ~ "Yes"
-  )) %>% 
-  mutate(had_rad = case_when(
-    !is.na(radiation_start_date_1) ~ "Yes"
-  )) %>% 
-  mutate(had_chemo_rad = case_when(
-    !is.na(treatment_start_dt_1) &
-      !is.na(radiation_start_date_1) ~ "Yes"
-  )) %>% 
-  mutate(had_all_treatment = case_when(
-    !is.na(treatment_start_dt_1) &
-      !is.na(hormone_therapy_start_date_1) &
-      !is.na(immunotherapy_start_date_1) &
-      !is.na(radiation_start_date_1)             ~ "Yes"
-  ))
+  full_join(., radiot, by = "patient_id") #%>% 
+  # mutate(had_chemo = case_when(
+  #   !is.na(chemotherapy_start_date) ~ "Yes"
+  # )) %>% 
+  # mutate(had_hormone = case_when(
+  #   !is.na(hormone_start_date) ~ "Yes"
+  # )) %>% 
+  # mutate(had_immuno = case_when(
+  #   !is.na(immunotherapy_start_date) ~ "Yes"
+  # )) %>% 
+  # mutate(had_rad = case_when(
+  #   !is.na(radiation_start_date) ~ "Yes"
+  # )) %>% 
+  # mutate(had_chemo_rad = case_when(
+  #   !is.na(chemotherapy_start_date) &
+  #     !is.na(radiation_start_date) ~ "Yes"
+  # ))
 
-write_rds(Treatment, "Treatment_06202023.rds")
+write_rds(Treatment, "Treatment_06272023.rds")
 
 
 
@@ -828,19 +671,19 @@ write_rds(Treatment, "Treatment_06202023.rds")
 ################################################################################# III ### Merge data
 # Get a data with 1 sample per row. Each sample row will have the treatments and demo, etc info
 Global_data <- 
-  left_join(breast_patients, Treatment, by = "mrn") %>% 
+  left_join(breast_patients, Treatment, by = "patient_id") %>% 
   # left_join(., ERPRHER, by = "mrn") %>% 
   full_join(., gcsf, by = "patient_id") %>% 
   full_join(., cbc, by = "patient_id")
 
 
-write_rds(Global_data, "Global_data_06202023.rds")
+write_rds(Global_data, "Global_data_06272023.rds")
 
 blood_patients <- Global_data %>% 
   # filter to patients who have blood samples
   filter(!is.na(specimen_collection_dt))
 
-write_rds(blood_patients, "blood_patients_06202023.rds")
+write_rds(blood_patients, "blood_patients_06272023.rds")
 
 
 # End cleaning
