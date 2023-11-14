@@ -1,0 +1,129 @@
+---
+title: "Breast cancer and PARP inhibitors in Avatar data"
+author: "Christelle Colin-Leitzinger"
+date: '`r Sys.Date()`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+
+.figure {
+    margin-top: 100px;
+    margin-bottom: 100px;
+}
+
+table {
+    margin-top: 10px;
+    margin-bottom: 25px !important;
+}
+
+th, td { padding: 5px; }
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library}
+library(tidyverse)
+library(data.table)
+library(VennDiagram)
+library(lubridate)
+library(gtsummary)
+library(viridis)
+library(ggforce)
+library(kableExtra)
+theme_set(theme_classic())
+theme_gtsummary_compact()
+```
+
+```{r}
+# blood_patients <- 
+#   read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients_06272023.rds")
+breast_patients <- 
+  read_rds(paste0(here::here(), "/breast_patients_06272023.rds"))
+treatment <- 
+  read_rds(paste0(here::here(), "/treatment_11142023.rds"))
+Treatment <- 
+  read_rds(paste0(here::here(), "/Treatment_06272023.rds"))
+
+sheetlist <- readxl::excel_sheets(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"))
+bind_sheet_fun <- function(i) {
+  d <- readxl::read_xlsx(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"), sheet = i)
+}
+parp_data <- map(sheetlist[1:8], bind_sheet_fun) %>% bind_rows() %>% 
+  janitor::clean_names()
+
+rm(sheetlist, bind_sheet_fun)
+```
+
+```{r select patients with parp}
+parp_patient <- breast_patients %>% 
+  filter(mrn %in% c(unique(parp_data$mrn)))
+
+parp_data <- parp_data %>% 
+  mutate(treatment_type = "PARP inhibitors") %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  arrange(mrn, document_date) %>% 
+  select(mrn, treatment_start_date = document_date, 
+         treatment = drug_name, treatment_type)
+
+treatment1 <- treatment %>% 
+  # Add mrn and select only patients who received PARP inhibitors at any time
+  inner_join(., parp_patient %>% 
+              select(patient_id, mrn), 
+            by = "patient_id") %>% 
+  # Add PARP drug for patients who received other drugs but also PARP only
+  bind_rows(., parp_data) %>% 
+  arrange(mrn, treatment_start_date) %>% 
+  select(mrn, everything(), -patient_id)
+
+selected_patients <- treatment1 %>% 
+  group_by(mrn, treatment_start_date) %>% 
+  summarise_at(vars(treatment, treatment_type, treatment_end_date), str_c, collapse = " _ ") %>%
+  ungroup() %>% 
+  group_by(mrn) %>%
+  mutate(line_number = row_number(mrn)) %>%
+  ungroup() %>% 
+  filter(line_number %in% c(1, 2) & treatment_type == "PARP inhibitors") %>% 
+  select(mrn)
+
+
+
+```
+
+
+```{r}
+parp_patient <- parp_patient %>% 
+  # Limit data to the patients who received PARP in line number 1 or 2
+  filter(mrn %in% c(unique(selected_patients$mrn))) %>% 
+  left_join(., Treatment, by = "patient_id")
+
+ctrl_patient <- breast_patients %>% 
+  # Limit data to the patients who didn't received PARP
+  filter(!mrn %in% c(unique(selected_patients$mrn))) %>% 
+  left_join(., Treatment, by = "patient_id")
+
+
+# Problem as need to remove rad in the line selection
+
+```
+
+```{r}
+
+```
