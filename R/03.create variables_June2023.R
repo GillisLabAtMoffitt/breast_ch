@@ -95,15 +95,15 @@ seq_patients <- seq_patients %>%
     sample_treatment_type == "hormone"            ~ old_hormone_therapy_start_date_1,
     sample_treatment_type == "radiation"          ~ old_radiation_start_date_1
   )) %>% 
-  mutate(os_time = interval(start = date_of_diagnosis1, 
+  mutate(os_time_mo_from_dx = interval(start = date_of_diagnosis1, 
                             end = new_last_date)/
            duration(n = 1, units = "months")) %>% 
-  mutate(time_treatment_vitalstatus = interval(start = date_of_corresponding_treatment,
+  mutate(os_time_mo_from_tx_start = interval(start = date_of_corresponding_treatment,
                             end = new_last_date)/
            duration(n = 1, units = "months")) %>% 
   mutate(os_event = case_when(
     new_vital_status == "ALIVE"                 ~ 0,
-    new_vital_status == "DEAD"                  ~ 0
+    new_vital_status == "DEAD"                  ~ 1
   )) %>% 
   mutate(days_from_treatment_start_to_sample_collection = case_when(
     sample_treatment_type == "chemo"              ~ interval(start = old_chemotherapy_start_date_1,

@@ -640,6 +640,7 @@ treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
   mutate(treatment_line = row_number(patient_id)) %>%
   unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE) %>% 
   ungroup()
+write_rds(treatment, "treatment_11142023.rds")
 
 Treatment <- full_join(chemot, hormonet, by = "patient_id") %>% 
   full_join(., immnunot, by = "patient_id") %>% 
