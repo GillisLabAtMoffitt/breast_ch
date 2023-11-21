@@ -56,7 +56,9 @@ theme_gtsummary_compact()
 # blood_patients <- 
 #   read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients_06272023.rds")
 breast_patients <- 
-  read_rds(paste0(here::here(), "/breast_patients_06272023.rds"))
+  read_rds(paste0(here::here(), "/breast_patients_06272023.rds")) %>% 
+  distinct() %>% 
+  select(mrn, everything())
 treatment <- 
   read_rds(paste0(here::here(), "/treatment_11142023.rds"))
 Treatment <- 
@@ -67,63 +69,303 @@ bind_sheet_fun <- function(i) {
   d <- readxl::read_xlsx(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"), sheet = i)
 }
 parp_data <- map(sheetlist[1:8], bind_sheet_fun) %>% bind_rows() %>% 
-  janitor::clean_names()
+  janitor::clean_names() %>% 
+  filter(!is.na(mrn))
 
 rm(sheetlist, bind_sheet_fun)
 ```
 
 ```{r select patients with parp}
-parp_patient <- breast_patients %>% 
-  filter(mrn %in% c(unique(parp_data$mrn)))
+Treatment <- Treatment %>% 
+  # Add MRNs
+  inner_join(breast_patients %>% 
+               select(patient_id, mrn) %>% 
+               distinct(),. , 
+             by = "patient_id")
 
 parp_data <- parp_data %>% 
   mutate(treatment_type = "PARP inhibitors") %>% 
   mutate(mrn = as.character(mrn)) %>% 
-  arrange(mrn, document_date) %>% 
-  select(mrn, treatment_start_date = document_date, 
-         treatment = drug_name, treatment_type)
+  select(mrn, parp_start_date = document_date, 
+         parp_drug_name = drug_name, treatment_type
+         ) %>% 
+  distinct() %>% 
+  filter(mrn %in% c(unique(breast_patients$mrn))) %>%
+  # Combine drugs into regimen
+  group_by(mrn, parp_start_date, treatment_type
+           ) %>% 
+  summarise_at(vars(parp_drug_name), str_c, collapse = "; ") %>%
+  ungroup() %>% 
+  mutate(had_parp_treatment = "Yes")
 
-treatment1 <- treatment %>% 
-  # Add mrn and select only patients who received PARP inhibitors at any time
-  inner_join(., parp_patient %>% 
-              select(patient_id, mrn), 
+treatment <- treatment %>% 
+  # Fix date
+  mutate(treatment_end_date = as.POSIXct(treatment_end_date)) %>%
+  # Add MRNs
+  inner_join(breast_patients %>% 
+              select(patient_id, mrn) %>% 
+               distinct(), ., 
             by = "patient_id") %>% 
-  # Add PARP drug for patients who received other drugs but also PARP only
-  bind_rows(., parp_data) %>% 
+  # Create line number to be able to add in PARP
   arrange(mrn, treatment_start_date) %>% 
-  select(mrn, everything(), -patient_id)
-
-selected_patients <- treatment1 %>% 
-  group_by(mrn, treatment_start_date) %>% 
-  summarise_at(vars(treatment, treatment_type, treatment_end_date), str_c, collapse = " _ ") %>%
+  group_by(mrn) %>% 
+  mutate(line_number = row_number(mrn)) %>% 
   ungroup() %>% 
-  group_by(mrn) %>%
-  mutate(line_number = row_number(mrn)) %>%
-  ungroup() %>% 
-  filter(line_number %in% c(1, 2) & treatment_type == "PARP inhibitors") %>% 
-  select(mrn)
+  mutate(had_standart_treatment = "Yes")
+  # mutate(had_chemo = ifelse(treatment_type == "chemo", "Yes", "No")) %>% 
+  # mutate(had_hormone = ifelse(treatment_type == "hormone", "Yes", "No")) %>% 
+  # mutate(had_immunoT = ifelse(treatment_type == "immunoT", "Yes", "No")) %>% 
+  # mutate(had_radioT = ifelse(treatment_type == "radioT", "Yes", "No"))
 
+# Organize regimen separately for patients with / without parp
+treatment1 <- treatment %>% 
+  # We don't have PARP treatment end date so cannot just bind data to organize regimen
+  full_join(parp_data, ., 
+            by = "mrn")
 
-
-```
-
-
-```{r}
-parp_patient <- parp_patient %>% 
-  # Limit data to the patients who received PARP in line number 1 or 2
-  filter(mrn %in% c(unique(selected_patients$mrn))) %>% 
-  left_join(., Treatment, by = "patient_id")
-
-ctrl_patient <- breast_patients %>% 
+no_parp <- treatment1 %>% 
   # Limit data to the patients who didn't received PARP
-  filter(!mrn %in% c(unique(selected_patients$mrn))) %>% 
-  left_join(., Treatment, by = "patient_id")
+  filter(is.na(had_parp_treatment) & 
+           !is.na(had_standart_treatment)) %>% 
+  select(mrn)
+treatment_no_parp <- Treatment %>% 
+  filter(mrn %in% c(unique(no_parp$mrn)))
+
+treatment_parp_only <- treatment1 %>% 
+  filter(!is.na(had_parp_treatment) & 
+           is.na(had_standart_treatment)) %>% 
+  select(mrn, parp_start_date,
+         # treatment_type = treatment_type.y,
+         parp_drug_name) %>% 
+  arrange(mrn, parp_start_date) #%>%
+  # group_by(mrn) %>% 
+  # mutate(line_number = row_number(mrn)) %>% 
+  # ungroup()
+treatment_parp_only <-  dcast(setDT(treatment_parp_only), mrn ~ rowid(mrn),
+                            value.var = c(
+                              "parp_start_date",
+                              "parp_drug_name"
+                            )
+) %>% left_join(., Treatment)
 
 
-# Problem as need to remove rad in the line selection
+temp <- treatment1 %>% 
+  # Limit data to the patients who received PARP + other
+  filter(!is.na(had_parp_treatment) & 
+           !is.na(had_standart_treatment)) %>% 
+  # Limit data to the patients who received PARP in line number 1 or 2
+  # group_by(mrn) %>% 
+  # arrange(mrn, treatment_start_date) %>% 
+  # mutate(line_number = row_number(mrn)) %>% 
+  mutate(parp_sequence_vs_regimen = case_when(
+    parp_start_date <= treatment_start_date             ~ "Before",
+    parp_start_date >= treatment_start_date &
+       parp_start_date <= treatment_end_date            ~ "within regimen",
+    parp_start_date >= treatment_start_date &
+        is.na(treatment_end_date)                       ~ "After",
+    parp_start_date >= treatment_start_date &
+        parp_start_date >= treatment_end_date           ~ "After"
+  )) %>% 
+  mutate(parp_as_first_reg = case_when(
+    (line_number == 1 |
+       line_number == 2) &
+      parp_sequence_vs_regimen == "Before"             ~ "PARP as 1/2 regimen"
+  )) %>% 
+  filter(parp_as_first_reg == "PARP as 1/2 regimen") %>% 
+  select(mrn) %>% 
+  distinct()
 
+treatment_incl_parp <- parp_data %>% 
+              select(mrn, parp_start_date, 
+                     parp_drug_name) %>% 
+  filter(mrn %in% c(unique(temp$mrn))) %>% 
+  arrange(mrn, parp_start_date) # %>% 
+  # group_by(mrn) %>% 
+  # mutate(line_number = row_number(mrn)) %>% 
+  # ungroup() %>% 
+  # select(mrn, everything(), -c(patient_id, treatment_line))
+treatment_incl_parp <-  dcast(setDT(treatment_incl_parp), mrn ~ rowid(mrn),
+                              value.var = c(
+                                "parp_start_date",
+                                "parp_drug_name"
+                              )) %>% 
+  left_join(., Treatment,
+            by = "mrn")
+rm(no_parp, temp)
+```
+We start with a number of :  
+- `r length(unique(treatment_incl_parp$mrn))` patients who received PARP drugs during the first or second course of treatment (1 course of treatment can be a drug regimen -chemo, hormone, immune drugs- or radiation).  
+- `r length(unique(treatment_parp_only$mrn))` patients who received PARP drugs only
+
+# Overall data selection
+
+## Sample types selection
+- collection_site_tissue_type == blood
+- sample_type == Buffy Coat, Genomic DNA, MNC, MNC less CD138+, Unprocessed Liquid Tissue
+
+## Patient characteristics
+- primary_site_group == "Breast" (keep only breast diagnosis date)
+
+## Treatment cleaning
+- keep treatment for these selected patients (who has blood samples and breast cancer)
+- remove drugs not used for breast cancer treatment
+- removed drugs which were refused
+- removed drugs that happened before the first date of diagnosis for breast cancer
+- combined AC followed by P
+- combined 5FU, cyclophosphamide, epirubicin followed by docetaxel
+
+# Repartition of Samples Before and After Treatments within Time Limits
+
+We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments.
+
+```{r main data}
+parp_only_patients <- treatment_parp_only %>% 
+  # Add mrn and select only patients who received PARP inhibitors at any time
+  inner_join(breast_patients, .,
+            by = "mrn")
+
+parp_incl_patients <- treatment_incl_parp %>% 
+  # Add mrn and select only patients who received PARP inhibitors at any time
+  inner_join(breast_patients, .,
+            by = "mrn")
+parp_patients <- bind_rows(parp_incl_patients,
+                           parp_only_patients)
+  
+ctrl_patient <- treatment_no_parp %>% 
+  # Add mrn and select only patients who received PARP inhibitors at any time
+  inner_join(breast_patients, .,
+            by = "mrn")
+rm(parp_only_patients, parp_incl_patients)
 ```
 
-```{r}
+Summary criteria for sample selection:
+
+* PARP only:
+  + Pre-sample must be closest to drug start from -365 days to + 5days
+     + 
+     + also needs to be before rad or no rad was given
+  + Sequential sample must be at least 6 months AFTER PARP start date ~~and during PARP treatment but more than 14 days after PARP start? (I don't have PARP end date)~~
+     + also needs to be before rad or no rad was given
+
+* Radiation only:
+  + Pre-sample must be closest to drug start from -365 days to radiation date
+     + also needs to be before chemo or no chemo was given
+  + Sequential sample must be within 3 year but 100 days after radiation ~~and before new drugs/radiation~~
+     + also needs to be before chemo or no chemo was given
+
+* Chemotherapy then Radiation:
+    + Pre-sample must be closest to chemo start from -365 days to + 5days
+    + Sequential sample T2  -> take all
+    + choose T2 closest to radiation start (if multiple samples)
+    + Sequential sample T3 must be within ~~a year~~ 3 years but 100 days after radiation
+
+```{r parp_only_patients}
+parp_patients1 <- parp_patients %>% 
+  arrange(mrn, specimen_collection_dt) %>% 
+  # mutate(had_parp = ifelse(!is.na(parp_start_date_1), "Yes", "No")) %>% 
+  # mutate(had_chemo = ifelse(!is.na(chemotherapy_start_date_1), "Yes", "No")) %>% 
+  # mutate(had_hormone = ifelse(!is.na(hormone_start_date_1), "Yes", "No")) %>%
+  # mutate(had_immunoT = ifelse(!is.na(immunotherapy_start_date_1), "Yes", "No")) %>%
+  # mutate(had_radioT = ifelse(!is.na(radiation_start_date_1), "Yes", "No")) %>%
+  
+  mutate(pre_sample_T1 = case_when(
+    is.na(parp_start_date_1)                                        ~ "no PARP administration",
+    specimen_collection_dt <= (parp_start_date_1 - days(365))       ~ "too early",
+    # parp_start_date_1 >= chemotherapy_start_date_1 |
+      parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad",
+    specimen_collection_dt <= (parp_start_date_1 + days(5)) &
+      # (specimen_collection_dt <= chemotherapy_start_date_1 |
+      # is.na(chemotherapy_start_date_1)) &
+      (specimen_collection_dt <= radiation_start_date_1 |
+      is.na(radiation_start_date_1))                                ~ "Yes", ###################### Need to add date_2 if want to include the sampkes that can happen in the second regimen
+    specimen_collection_dt > parp_start_date_1                      ~ "After PARP",
+    TRUE                                                            ~ "No"
+  )) %>%
+  
+  mutate(post_sample_T2 = case_when(
+    is.na(parp_start_date_1)                                        ~ "no PARP administration",
+    specimen_collection_dt < (parp_start_date_1 + months(6))        ~ "too early",
+    # parp_start_date_1 >= chemotherapy_start_date_1 |
+      parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad",
+    
+    specimen_collection_dt >= (parp_start_date_1 + months(6)) &
+    specimen_collection_dt <= (parp_start_date_1 + years(1)) &
+      # (specimen_collection_dt <= chemotherapy_start_date_1 |
+      # is.na(chemotherapy_start_date_1)) &
+      (specimen_collection_dt <= radiation_start_date_1 |
+      is.na(radiation_start_date_1))                                ~ "Yes",
+    specimen_collection_dt > (parp_start_date_1 + years(1))         ~ "Too late",
+    TRUE                                                            ~ "No"
+  )) %>% 
+  mutate(post_sample_T3 = case_when(
+    specimen_collection_dt > (radiation_start_date_1 + days(100)) &
+      (specimen_collection_dt <= chemotherapy_start_date_1 |
+      is.na(chemotherapy_start_date_1))                             ~ "Yes"
+  )) %>% 
+  mutate(has_good_T1 = case_when(
+    pre_sample_T1 == "Yes"                                          ~ "Yes"
+  )) %>%
+  # Create T1 variables
+  group_by(mrn, has_good_T1) %>%
+  mutate(closest_presampleT1_date = case_when(
+    has_good_T1 == "Yes"                                            ~ last(specimen_collection_dt)
+  )) %>%
+  ungroup() %>% 
+  mutate(presampleT1_id_chemo = case_when(
+    closest_presampleT1_date == specimen_collection_dt              ~ sample_id
+  )) %>%
+  mutate(presampleT1_date = case_when(
+    !is.na(presampleT1_id_chemo)                                    ~ specimen_collection_dt
+  )) %>%
+  mutate(time_presampleT1_parp = case_when(
+    !is.na(presampleT1_id_chemo)                                    ~ (interval(
+      start = closest_presampleT1_date, end = parp_start_date_1) /
+        duration(n = 1, units = "days"))
+  )) %>%
+  group_by(mrn) %>% 
+  fill(has_good_T1, .direction = "updown") %>% 
+  ungroup() %>% 
+  
+  mutate(has_good_T2 = case_when(
+    has_good_T1 == "Yes" &
+    post_sample_T2 == "Yes"                                          ~ "Yes"
+  )) %>%
+  # Create T2 variables
+  group_by(mrn, has_good_T2) %>%
+  mutate(closest_presampleT2_date = case_when(
+    has_good_T2 == "Yes"                                            ~ last(specimen_collection_dt)
+  )) %>%
+  ungroup() %>% 
+  mutate(presampleT2_id_chemo = case_when(
+    closest_presampleT2_date == specimen_collection_dt              ~ sample_id
+  )) %>%
+  mutate(presampleT2_date = case_when(
+    !is.na(presampleT2_id_chemo)                                    ~ specimen_collection_dt
+  )) %>%
+  mutate(time_presampleT2_parp = case_when(
+    !is.na(presampleT2_id_chemo)                                    ~ (interval(
+      start = closest_presampleT2_date, end = parp_start_date_1) /
+        duration(n = 1, units = "days"))
+  )) %>%
+  group_by(mrn) %>%
+  fill(has_good_T2, .direction = "updown") %>%
+  ungroup() %>%
+  
+  mutate(has_good_T3 = case_when(
+    has_good_T2 == "Yes" &
+    post_sample_T3 == "Yes"                                          ~ "Yes"
+  )) %>%
+  
+  
+  select(mrn, pre_sample_T1, has_good_T1, post_sample_T2, has_good_T2,
+         has_good_T3,
+         closest_presampleT2_date,
+         presampleT2_id_chemo, presampleT2_date, time_presampleT2_parp,
+         closest_presampleT1_date,
+         presampleT1_id_chemo, presampleT1_date, time_presampleT1_parp,
+         post_sample_T3, starts_with("has_good"),
+         specimen_collection_dt, parp_start_date_1, chemotherapy_start_date_1, radiation_start_date_1,
+         everything())
+
 
 ```
