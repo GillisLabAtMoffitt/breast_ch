@@ -64,308 +64,2064 @@ treatment <-
 Treatment <- 
   read_rds(paste0(here::here(), "/Treatment_06272023.rds"))
 
-sheetlist <- readxl::excel_sheets(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"))
-bind_sheet_fun <- function(i) {
-  d <- readxl::read_xlsx(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"), sheet = i)
-}
-parp_data <- map(sheetlist[1:8], bind_sheet_fun) %>% bind_rows() %>% 
-  janitor::clean_names() %>% 
-  filter(!is.na(mrn))
+# sheetlist <- readxl::excel_sheets(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"))
+# bind_sheet_fun <- function(i) {
+#   d <- readxl::read_xlsx(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"), sheet = i)
+# }
+# parp_data <- map(sheetlist[1:8], bind_sheet_fun) %>% bind_rows() %>% 
+#   janitor::clean_names() %>% 
+#   filter(!is.na(mrn))
+# rm(sheetlist, bind_sheet_fun)
 
-rm(sheetlist, bind_sheet_fun)
+parp_data <- readxl::read_xlsx(paste0(here::here(), "/KB/Updated_Breast_Meds.xlsx"), 
+                                   na = "NA") %>% 
+  janitor::clean_names()
+
 ```
 
-```{r select patients with parp}
-Treatment <- Treatment %>% 
-  # Add MRNs
-  inner_join(breast_patients %>% 
-               select(patient_id, mrn) %>% 
-               distinct(),. , 
-             by = "patient_id")
+```{r clean treatment}
+parp_data <- parp_data %>% 
+  # basic clean up
+  mutate(mrn = as.character(mrn)) %>% 
+  mutate(drug_catalog_nm = str_to_sentence(drug_catalog_nm)) %>% 
+  rename(parp_drug_name = drug_catalog_nm, 
+         parp_start_date = drug_order_start_dtm) %>% 
+  # Get end date
+  # use last dose administered and fill with last date of order
+  mutate(parp_end_date = coalesce(last_dose_dtm, drug_order_stop_dtm))# %>% 
+  # # calculate duration
+  # mutate(parp_duration = interval(start = parp_start_date, end = parp_end_date)/
+  #          duration(n = 1, units = "days"),
+  #        parp_duration = case_when(
+  #          is.na(parp_duration)             ~ 0,
+  #          TRUE                             ~ parp_duration
+  #        )) %>% 
+  # # arrange to have the longest duration if has same start date
+  # arrange(mrn, parp_start_date, desc(parp_duration)) %>% 
+  # distinct(mrn, parp_drug_name, parp_start_date, .keep_all = TRUE) %>% 
+  # group_by(mrn, parp_start_date) %>% 
+  # mutate(line = n()) %>%
+  # group_by(mrn) %>% 
+  # mutate(parp_line_number = dense_rank(interaction(line, parp_start_date))) %>% 
+  # ungroup() %>% 
+  # select(-c(order_status_desc, line))
 
+# Create regimen
 parp_data <- parp_data %>% 
   mutate(treatment_type = "PARP inhibitors") %>% 
-  mutate(mrn = as.character(mrn)) %>% 
-  select(mrn, parp_start_date = document_date, 
-         parp_drug_name = drug_name, treatment_type
-         ) %>% 
-  distinct() %>% 
   filter(mrn %in% c(unique(breast_patients$mrn))) %>%
   # Combine drugs into regimen
-  group_by(mrn, parp_start_date, treatment_type
-           ) %>% 
-  summarise_at(vars(parp_drug_name), str_c, collapse = "; ") %>%
+  arrange(mrn, parp_start_date, desc(parp_end_date)) %>% 
+  group_by(mrn, parp_start_date, treatment_type) %>% 
+  summarise_at(vars(parp_drug_name, parp_end_date), str_c, collapse = "; ") %>%
   ungroup() %>% 
+  # Fix date, this step will also take the latest end date because of how I arrange above
+  mutate(parp_end_date = as.POSIXct(parp_end_date)) %>%
+  # Need to combine sequential regimen within the next 3 days (restart the day after or so)
+  
+  
+  
+  
   mutate(had_parp_treatment = "Yes")
 
-treatment <- treatment %>% 
+treatment <- treatment %>%
   # Fix date
   mutate(treatment_end_date = as.POSIXct(treatment_end_date)) %>%
   # Add MRNs
-  inner_join(breast_patients %>% 
-              select(patient_id, mrn) %>% 
-               distinct(), ., 
-            by = "patient_id") %>% 
+  inner_join(breast_patients %>%
+              select(patient_id, mrn) %>%
+               distinct(), .,
+            by = "patient_id") %>%
   # Create line number to be able to add in PARP
-  arrange(mrn, treatment_start_date) %>% 
-  group_by(mrn) %>% 
-  mutate(line_number = row_number(mrn)) %>% 
-  ungroup() %>% 
+  arrange(mrn, treatment_start_date) %>%
+  group_by(mrn) %>%
+  mutate(line_number = row_number(mrn)) %>%
+  ungroup() %>%
   mutate(had_standart_treatment = "Yes")
-  # mutate(had_chemo = ifelse(treatment_type == "chemo", "Yes", "No")) %>% 
-  # mutate(had_hormone = ifelse(treatment_type == "hormone", "Yes", "No")) %>% 
-  # mutate(had_immunoT = ifelse(treatment_type == "immunoT", "Yes", "No")) %>% 
+  # mutate(had_chemo = ifelse(treatment_type == "chemo", "Yes", "No")) %>%
+  # mutate(had_hormone = ifelse(treatment_type == "hormone", "Yes", "No")) %>%
+  # mutate(had_immunoT = ifelse(treatment_type == "immunoT", "Yes", "No")) %>%
   # mutate(had_radioT = ifelse(treatment_type == "radioT", "Yes", "No"))
 
-# Organize regimen separately for patients with / without parp
-treatment1 <- treatment %>% 
-  # We don't have PARP treatment end date so cannot just bind data to organize regimen
-  full_join(parp_data, ., 
-            by = "mrn")
-
-no_parp <- treatment1 %>% 
-  # Limit data to the patients who didn't received PARP
-  filter(is.na(had_parp_treatment) & 
-           !is.na(had_standart_treatment)) %>% 
-  select(mrn)
-treatment_no_parp <- Treatment %>% 
-  filter(mrn %in% c(unique(no_parp$mrn)))
-
-treatment_parp_only <- treatment1 %>% 
-  filter(!is.na(had_parp_treatment) & 
-           is.na(had_standart_treatment)) %>% 
-  select(mrn, parp_start_date,
-         # treatment_type = treatment_type.y,
-         parp_drug_name) %>% 
-  arrange(mrn, parp_start_date) #%>%
-  # group_by(mrn) %>% 
-  # mutate(line_number = row_number(mrn)) %>% 
-  # ungroup()
-treatment_parp_only <-  dcast(setDT(treatment_parp_only), mrn ~ rowid(mrn),
-                            value.var = c(
-                              "parp_start_date",
-                              "parp_drug_name"
-                            )
-) %>% left_join(., Treatment)
-
-
-temp <- treatment1 %>% 
-  # Limit data to the patients who received PARP + other
-  filter(!is.na(had_parp_treatment) & 
-           !is.na(had_standart_treatment)) %>% 
-  # Limit data to the patients who received PARP in line number 1 or 2
-  # group_by(mrn) %>% 
-  # arrange(mrn, treatment_start_date) %>% 
-  # mutate(line_number = row_number(mrn)) %>% 
-  mutate(parp_sequence_vs_regimen = case_when(
-    parp_start_date <= treatment_start_date             ~ "Before",
-    parp_start_date >= treatment_start_date &
-       parp_start_date <= treatment_end_date            ~ "within regimen",
-    parp_start_date >= treatment_start_date &
-        is.na(treatment_end_date)                       ~ "After",
-    parp_start_date >= treatment_start_date &
-        parp_start_date >= treatment_end_date           ~ "After"
-  )) %>% 
-  mutate(parp_as_first_reg = case_when(
-    (line_number == 1 |
-       line_number == 2) &
-      parp_sequence_vs_regimen == "Before"             ~ "PARP as 1/2 regimen"
-  )) %>% 
-  filter(parp_as_first_reg == "PARP as 1/2 regimen") %>% 
-  select(mrn) %>% 
-  distinct()
-
-treatment_incl_parp <- parp_data %>% 
-              select(mrn, parp_start_date, 
-                     parp_drug_name) %>% 
-  filter(mrn %in% c(unique(temp$mrn))) %>% 
-  arrange(mrn, parp_start_date) # %>% 
-  # group_by(mrn) %>% 
-  # mutate(line_number = row_number(mrn)) %>% 
-  # ungroup() %>% 
-  # select(mrn, everything(), -c(patient_id, treatment_line))
-treatment_incl_parp <-  dcast(setDT(treatment_incl_parp), mrn ~ rowid(mrn),
-                              value.var = c(
-                                "parp_start_date",
-                                "parp_drug_name"
-                              )) %>% 
-  left_join(., Treatment,
-            by = "mrn")
-rm(no_parp, temp)
-```
-We start with a number of :  
-- `r length(unique(treatment_incl_parp$mrn))` patients who received PARP drugs during the first or second course of treatment (1 course of treatment can be a drug regimen -chemo, hormone, immune drugs- or radiation).  
-- `r length(unique(treatment_parp_only$mrn))` patients who received PARP drugs only
-
-# Overall data selection
-
-## Sample types selection
-- collection_site_tissue_type == blood
-- sample_type == Buffy Coat, Genomic DNA, MNC, MNC less CD138+, Unprocessed Liquid Tissue
-
-## Patient characteristics
-- primary_site_group == "Breast" (keep only breast diagnosis date)
-
-## Treatment cleaning
-- keep treatment for these selected patients (who has blood samples and breast cancer)
-- remove drugs not used for breast cancer treatment
-- removed drugs which were refused
-- removed drugs that happened before the first date of diagnosis for breast cancer
-- combined AC followed by P
-- combined 5FU, cyclophosphamide, epirubicin followed by docetaxel
-
-# Repartition of Samples Before and After Treatments within Time Limits
-
-We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments.
-
-```{r main data}
-parp_only_patients <- treatment_parp_only %>% 
-  # Add mrn and select only patients who received PARP inhibitors at any time
-  inner_join(breast_patients, .,
-            by = "mrn")
-
-parp_incl_patients <- treatment_incl_parp %>% 
-  # Add mrn and select only patients who received PARP inhibitors at any time
-  inner_join(breast_patients, .,
-            by = "mrn")
-parp_patients <- bind_rows(parp_incl_patients,
-                           parp_only_patients)
-  
-ctrl_patient <- treatment_no_parp %>% 
-  # Add mrn and select only patients who received PARP inhibitors at any time
-  inner_join(breast_patients, .,
-            by = "mrn")
-rm(parp_only_patients, parp_incl_patients)
+# Treatment <- Treatment %>% 
+#   # Add MRNs
+#   inner_join(breast_patients %>% 
+#                select(patient_id, mrn) %>% 
+#                distinct(),. , 
+#              by = "patient_id") %>% 
+#   mutate(had_standart_treatment = "Yes")
+# 
+# # Organize regimen separately for patients with / without parp
+# Treatment_and_parp <- Treatment %>% 
+#   full_join(parp_data, ., 
+#             by = "mrn")
+# treatment_and_parp <- treatment %>% 
+#   full_join(parp_data, ., 
+#             by = "mrn")
+# 
+# # Create data for no parp patients----
+# treatment_no_parp <- Treatment_and_parp %>% 
+#   # Limit data to the patients who didn't received PARP
+#   filter(is.na(had_parp_treatment) & 
+#            !is.na(had_standart_treatment))
+# 
+# # Create data for parp only patients----
+# treatment_parp_only <- Treatment_and_parp %>% 
+#   filter(!is.na(had_parp_treatment) & 
+#            is.na(had_standart_treatment))# %>% 
+#   # select(mrn, parp_start_date,
+#   #        # treatment_type = treatment_type.y,
+#   #        parp_drug_name) %>% 
+#   # arrange(mrn, parp_start_date) #%>%
+#   # # group_by(mrn) %>% 
+#   # # mutate(line_number = row_number(mrn)) %>% 
+#   # # ungroup()
+# # treatment_parp_only <-  dcast(setDT(treatment_parp_only), mrn ~ rowid(mrn),
+# #                             value.var = c(
+# #                               "parp_start_date",
+# #                               "parp_drug_name"
+# #                             )
+# # ) %>% left_join(., Treatment, by = "mrn")
 ```
 
-Summary criteria for sample selection:
+```{r select patients with parp}
+# Create a combined PARP and drugs data
+treatments <- bind_rows(parp_data %>% 
+                          rename(treatment_start_date = parp_start_date,
+                                 treatment_end_date = parp_end_date,
+                                 treatment = parp_drug_name), 
+                        treatment) %>% 
+  arrange(mrn, treatment_start_date, treatment) %>% 
+  group_by(mrn) %>% 
+  fill(had_parp_treatment, had_standart_treatment, .direction = "updown") %>% 
+  ungroup()
+treatments <- treatments %>%
+  filter((treatment_type == "chemo" |
+           treatment_type == "radioT" |
+           treatment_type == "PARP inhibitors") &
+           had_parp_treatment == "Yes") %>% 
+  # Calculate gap between treatments
+  group_by(mrn) %>% 
+  mutate(treatment_interval = as.Date(treatment_start_date) - lag(as.Date(treatment_end_date)), 
+         treatment_interval = ifelse(is.na(treatment_interval), 0, treatment_interval),
+         .before = treatment_start_date) %>% 
+  ungroup() %>% 
+  # calculate duration
+  mutate(treatment_duration = interval(start = treatment_start_date, end = treatment_end_date)/
+           duration(n = 1, units = "days"),
+         treatment_duration = case_when(
+           is.na(treatment_duration)                       ~ 0,
+           TRUE                                            ~ treatment_duration
+         ), .after = treatment_interval)
+```
 
-* PARP only:
-  + Pre-sample must be closest to drug start from -365 days to + 5days
-     + 
-     + also needs to be before rad or no rad was given
-  + Sequential sample must be at least 6 months AFTER PARP start date ~~and during PARP treatment but more than 14 days after PARP start? (I don't have PARP end date)~~
-     + also needs to be before rad or no rad was given
-
-* Radiation only:
-  + Pre-sample must be closest to drug start from -365 days to radiation date
-     + also needs to be before chemo or no chemo was given
-  + Sequential sample must be within 3 year but 100 days after radiation ~~and before new drugs/radiation~~
-     + also needs to be before chemo or no chemo was given
-
-* Chemotherapy then Radiation:
-    + Pre-sample must be closest to chemo start from -365 days to + 5days
-    + Sequential sample T2  -> take all
-    + choose T2 closest to radiation start (if multiple samples)
-    + Sequential sample T3 must be within ~~a year~~ 3 years but 100 days after radiation
-
-```{r parp_only_patients}
-parp_patients1 <- parp_patients %>% 
-  arrange(mrn, specimen_collection_dt) %>% 
-  # mutate(had_parp = ifelse(!is.na(parp_start_date_1), "Yes", "No")) %>% 
-  # mutate(had_chemo = ifelse(!is.na(chemotherapy_start_date_1), "Yes", "No")) %>% 
-  # mutate(had_hormone = ifelse(!is.na(hormone_start_date_1), "Yes", "No")) %>%
-  # mutate(had_immunoT = ifelse(!is.na(immunotherapy_start_date_1), "Yes", "No")) %>%
-  # mutate(had_radioT = ifelse(!is.na(radiation_start_date_1), "Yes", "No")) %>%
+```{r select presamples}
+parp_presamples <- treatments %>% 
+  # Join to samples
+  select(mrn, treatment_interval, treatment_duration, treatment_type, treatment, treatment_start_date, treatment_end_date, had_parp_treatment, had_standart_treatment) %>% # remove later
+  filter(had_parp_treatment == "Yes") %>%
   
+  left_join(., breast_patients %>% 
+              select(mrn, sample_id, specimen_collection_dt) %>% 
+              distinct() %>% 
+              arrange(mrn, specimen_collection_dt), 
+            by = "mrn", 
+            relationship = "many-to-many") %>% 
+  select(mrn, treatment_interval, treatment_duration, treatment_type, treatment, treatment_start_date, specimen_collection_dt, everything())
+
+parp_presamples <- parp_presamples %>% 
+  mutate(time_presampleT1_parp = case_when(
+    treatment_type == "PARP inhibitors"                             ~ (interval(
+      start = specimen_collection_dt, end = treatment_start_date) /
+        duration(n = 1, units = "days"))
+  )) %>% 
   mutate(pre_sample_T1 = case_when(
-    is.na(parp_start_date_1)                                        ~ "no PARP administration",
-    specimen_collection_dt <= (parp_start_date_1 - days(365))       ~ "too early",
-    # parp_start_date_1 >= chemotherapy_start_date_1 |
-      parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad",
-    specimen_collection_dt <= (parp_start_date_1 + days(5)) &
-      # (specimen_collection_dt <= chemotherapy_start_date_1 |
-      # is.na(chemotherapy_start_date_1)) &
-      (specimen_collection_dt <= radiation_start_date_1 |
-      is.na(radiation_start_date_1))                                ~ "Yes", ###################### Need to add date_2 if want to include the sampkes that can happen in the second regimen
-    specimen_collection_dt > parp_start_date_1                      ~ "After PARP",
+    treatment_type != "PARP inhibitors" |
+      (treatment_type == "PARP inhibitors" &
+      is.na(treatment_start_date))                                  ~ "not a PARP administration",
+    treatment_type == "PARP inhibitors" &
+      specimen_collection_dt <= (treatment_start_date - days(365))  ~ "too early",
+    treatment_type == "PARP inhibitors" &
+      specimen_collection_dt <= (treatment_start_date + days(5)) &
+      # treatment_duration > (6 * 30.437) &                  # Add back----------------------------------
+      time_presampleT1_parp <= treatment_interval                   ~ "Yes",
     TRUE                                                            ~ "No"
-  )) %>%
-  
-  mutate(post_sample_T2 = case_when(
-    is.na(parp_start_date_1)                                        ~ "no PARP administration",
-    specimen_collection_dt < (parp_start_date_1 + months(6))        ~ "too early",
-    # parp_start_date_1 >= chemotherapy_start_date_1 |
-      parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad",
-    
-    specimen_collection_dt >= (parp_start_date_1 + months(6)) &
-    specimen_collection_dt <= (parp_start_date_1 + years(1)) &
-      # (specimen_collection_dt <= chemotherapy_start_date_1 |
-      # is.na(chemotherapy_start_date_1)) &
-      (specimen_collection_dt <= radiation_start_date_1 |
-      is.na(radiation_start_date_1))                                ~ "Yes",
-    specimen_collection_dt > (parp_start_date_1 + years(1))         ~ "Too late",
-    TRUE                                                            ~ "No"
-  )) %>% 
-  mutate(post_sample_T3 = case_when(
-    specimen_collection_dt > (radiation_start_date_1 + days(100)) &
-      (specimen_collection_dt <= chemotherapy_start_date_1 |
-      is.na(chemotherapy_start_date_1))                             ~ "Yes"
-  )) %>% 
+  ), .after = 1) %>% 
+  # can be more than 1 T1, choose the closest to parp date
+  # group_by(mrn) %>% 
+  # mutate(pre_sample_T1_1 = last(pre_sample_T1), .after = 1) %>% 
+  group_by(mrn, treatment_start_date, pre_sample_T1) %>%
+  mutate(presampleT1_date = case_when(
+    pre_sample_T1 == "Yes"                                          ~ last(specimen_collection_dt)
+  ), .after = 1) %>%
+  ungroup() %>% 
+  mutate(pre_sample_T1_ = case_when(
+    presampleT1_date == specimen_collection_dt              ~ "Yes",
+  ), .after = 1)
+```
+
+
+```{r check}
+# How many good T1 per patient
+check <- parp_presamples %>%
+  filter(pre_sample_T1_ == "Yes") %>%
+  group_by(mrn) %>%
+  mutate(number_of_T1 = n())
+check$number_of_T1
+```
+
+
+```{r select presamples2}
+parp_presamples <- parp_presamples %>% 
+  # Create T1 variables
   mutate(has_good_T1 = case_when(
     pre_sample_T1 == "Yes"                                          ~ "Yes"
   )) %>%
-  # Create T1 variables
-  group_by(mrn, has_good_T1) %>%
-  mutate(closest_presampleT1_date = case_when(
-    has_good_T1 == "Yes"                                            ~ last(specimen_collection_dt)
-  )) %>%
-  ungroup() %>% 
-  mutate(presampleT1_id_chemo = case_when(
-    closest_presampleT1_date == specimen_collection_dt              ~ sample_id
+  mutate(presampleT1_id = case_when(
+    pre_sample_T1 == "Yes"                                          ~ sample_id
   )) %>%
   mutate(presampleT1_date = case_when(
-    !is.na(presampleT1_id_chemo)                                    ~ specimen_collection_dt
+    pre_sample_T1 == "Yes"                                          ~ specimen_collection_dt
   )) %>%
   mutate(time_presampleT1_parp = case_when(
-    !is.na(presampleT1_id_chemo)                                    ~ (interval(
-      start = closest_presampleT1_date, end = parp_start_date_1) /
-        duration(n = 1, units = "days"))
+    pre_sample_T1 == "Yes"                                          ~ specimen_collection_dt
+  )) %>%
+  mutate(time_presampleT1_parp = case_when(
+    pre_sample_T1 == "Yes"                                          ~ time_presampleT1_parp
+  )) %>%
+  mutate(parp_duration = case_when(
+    pre_sample_T1 == "Yes"                                          ~ treatment_duration
   )) %>%
   group_by(mrn) %>% 
-  fill(has_good_T1, .direction = "updown") %>% 
-  ungroup() %>% 
-  
-  mutate(has_good_T2 = case_when(
-    has_good_T1 == "Yes" &
-    post_sample_T2 == "Yes"                                          ~ "Yes"
-  )) %>%
-  # Create T2 variables
-  group_by(mrn, has_good_T2) %>%
-  mutate(closest_presampleT2_date = case_when(
-    has_good_T2 == "Yes"                                            ~ last(specimen_collection_dt)
-  )) %>%
-  ungroup() %>% 
-  mutate(presampleT2_id_chemo = case_when(
-    closest_presampleT2_date == specimen_collection_dt              ~ sample_id
-  )) %>%
-  mutate(presampleT2_date = case_when(
-    !is.na(presampleT2_id_chemo)                                    ~ specimen_collection_dt
-  )) %>%
-  mutate(time_presampleT2_parp = case_when(
-    !is.na(presampleT2_id_chemo)                                    ~ (interval(
-      start = closest_presampleT2_date, end = parp_start_date_1) /
-        duration(n = 1, units = "days"))
-  )) %>%
-  group_by(mrn) %>%
-  fill(has_good_T2, .direction = "updown") %>%
-  ungroup() %>%
-  
-  mutate(has_good_T3 = case_when(
-    has_good_T2 == "Yes" &
-    post_sample_T3 == "Yes"                                          ~ "Yes"
-  )) %>%
-  
-  
-  select(mrn, pre_sample_T1, has_good_T1, post_sample_T2, has_good_T2,
-         has_good_T3,
-         closest_presampleT2_date,
-         presampleT2_id_chemo, presampleT2_date, time_presampleT2_parp,
-         closest_presampleT1_date,
-         presampleT1_id_chemo, presampleT1_date, time_presampleT1_parp,
-         post_sample_T3, starts_with("has_good"),
-         specimen_collection_dt, parp_start_date_1, chemotherapy_start_date_1, radiation_start_date_1,
-         everything())
-
-
+  fill(has_good_T1, presampleT1_id, presampleT1_date, 
+       time_presampleT1_parp, parp_duration, 
+       .direction = "updown") %>% 
+  ungroup()
 ```
+
+```{r}
+parp_postsamples <- parp_presamples %>% 
+  filter(has_good_T1 == "Yes") %>% # remove later
+  
+  
+  
+  mutate(post_sample_T2 = case_when(
+    # has_good_T1 == "Yes" &
+    #   treatment_type == "PARP inhibitors" &
+    #   sample_id == presampleT1_id                                   ~ "is T1 sample",
+    has_good_T1 == "Yes" &
+      (treatment_type != "PARP inhibitors" |
+         (treatment_type == "PARP inhibitors" &
+            is.na(treatment_start_date)))                           ~ "not a PARP administration",
+    # has_good_T1 == "Yes" &
+    #   treatment_type == "PARP inhibitors" &
+    #   specimen_collection_dt < (treatment_start_date + months(6))   ~ "too early",
+
+    has_good_T1 == "Yes" &
+      treatment_type == "PARP inhibitors" &
+      # after 6 months of parp
+      (specimen_collection_dt >= (treatment_start_date + months(6)) &
+         # during parp
+         specimen_collection_dt < treatment_end_date &
+         # within 60 days of completion
+         specimen_collection_dt >= (treatment_end_date - days(60))
+      )                                                             ~ "Yes",
+    
+    has_good_T1 == "Yes" &
+      treatment_type == "PARP inhibitors" &
+      specimen_collection_dt > treatment_end_date                     ~ "too late",
+      # specimen_collection_dt <= (treatment_start_date + days(5)) &
+      # time_presampleT1_parp <= treatment_interval                   ~ "Yes",
+      TRUE                                                            ~ NA_character_
+  ), .after = 1) 
+```
+
+
+<!-- ```{r} -->
+<!-- # Create data for parp + treatment patients---- -->
+<!-- # Need to start from the Treatment_and_parp data to compare date -->
+<!-- temp <- treatment_and_parp %>%  -->
+<!--   # Limit data to the patients who received PARP + other -->
+<!--   filter(!is.na(had_parp_treatment) &  -->
+<!--            !is.na(had_standart_treatment)) %>%  -->
+<!--   # Eliminate patients that have other drugs during PARP administration -->
+<!--   # Remove the PARP administration with other drugs in the same time -->
+<!--   mutate(parp_sequence_vs_regimen = case_when( -->
+<!--     treatment_start_date >= parp_start_date & -->
+<!--      (parp_start_date <= treatment_end_date | -->
+<!--         is.na(treatment_end_date))                      ~ "within regimen" -->
+<!--   )) %>%  -->
+<!--   filter(is.na(parp_sequence_vs_regimen)) -->
+
+<!-- treatment_incl_parp <- parp_data %>%  -->
+<!--               select(mrn, parp_start_date,  -->
+<!--                      parp_drug_name) %>%  -->
+<!--   filter(mrn %in% c(unique(temp$mrn))) %>%  -->
+<!--   arrange(mrn, parp_start_date) # %>%  -->
+<!--   # group_by(mrn) %>%  -->
+<!--   # mutate(line_number = row_number(mrn)) %>%  -->
+<!--   # ungroup() %>%  -->
+<!--   # select(mrn, everything(), -c(patient_id, treatment_line)) -->
+<!-- treatment_incl_parp <-  dcast(setDT(treatment_incl_parp), mrn ~ rowid(mrn), -->
+<!--                               value.var = c( -->
+<!--                                 "parp_start_date", -->
+<!--                                 "parp_drug_name" -->
+<!--                               )) %>%  -->
+<!--   left_join(., Treatment, -->
+<!--             by = "mrn") -->
+<!-- rm(no_parp, temp) -->
+<!-- ``` -->
+<!-- We start with a number of :   -->
+<!-- - `r length(unique(treatment_incl_parp$mrn))` patients who received PARP drugs during the first or second course of treatment (1 course of treatment can be a drug regimen -chemo, hormone, immune drugs- or radiation).   -->
+<!-- - `r length(unique(treatment_parp_only$mrn))` patients who received PARP drugs only -->
+
+<!-- # Overall data selection -->
+
+<!-- ## Sample types selection -->
+<!-- - collection_site_tissue_type == blood -->
+<!-- - sample_type == Buffy Coat, Genomic DNA, MNC, MNC less CD138+, Unprocessed Liquid Tissue -->
+
+<!-- ## Patient characteristics -->
+<!-- - primary_site_group == "Breast" (keep only breast diagnosis date) -->
+
+<!-- ## Treatment cleaning -->
+<!-- - keep treatment for these selected patients (who has blood samples and breast cancer) -->
+<!-- - remove drugs not used for breast cancer treatment -->
+<!-- - removed drugs which were refused -->
+<!-- - removed drugs that happened before the first date of diagnosis for breast cancer -->
+<!-- - combined AC followed by P -->
+<!-- - combined 5FU, cyclophosphamide, epirubicin followed by docetaxel -->
+
+<!-- # Repartition of Samples Before and After Treatments within Time Limits -->
+
+<!-- We focus on the chemotherapy and radiation treatment so the samples are not chosen depending of immunotherapy or hormonetherapy. Also samples are chosen disregarding targeted therapy treatments. -->
+
+<!-- ```{r main data} -->
+<!-- parp_only_patients <- treatment_parp_only %>%  -->
+<!--   # Add mrn and select only patients who received PARP inhibitors at any time -->
+<!--   inner_join(breast_patients, ., -->
+<!--             by = "mrn") -->
+
+<!-- parp_incl_patients <- treatment_incl_parp %>%  -->
+<!--   # Add mrn and select only patients who received PARP inhibitors at any time -->
+<!--   inner_join(breast_patients, ., -->
+<!--             by = "mrn") -->
+<!-- parp_patients <- bind_rows(parp_incl_patients, -->
+<!--                            parp_only_patients) -->
+
+<!-- ctrl_patient <- treatment_no_parp %>%  -->
+<!--   # Add mrn and select only patients who received PARP inhibitors at any time -->
+<!--   inner_join(breast_patients, ., -->
+<!--             by = "mrn") -->
+<!-- rm(parp_only_patients, parp_incl_patients) -->
+<!-- ``` -->
+
+<!-- Summary criteria for sample selection: -->
+
+<!-- * PARP only: -->
+<!--   + Pre-sample must be closest to drug start from -365 days to + 5days -->
+<!--      +  -->
+<!--      + also needs to be before rad or no rad was given -->
+<!--   + Sequential sample must be at least 6 months AFTER PARP start date ~~and during PARP treatment and within 60 days of PARP completion but more than 14 days after PARP start?~~ -->
+<!--      + also needs to be before rad/chemo or no rad/chemo was given -->
+
+<!-- * Radiation only: -->
+<!--   + Pre-sample must be closest to drug start from -365 days to radiation date -->
+<!--      + also needs to be before chemo or no chemo was given -->
+<!--   + Sequential sample must be within 3 year but 100 days after radiation ~~and before new drugs/radiation~~ -->
+<!--      + also needs to be before chemo or no chemo was given -->
+
+<!-- * Chemotherapy then Radiation: -->
+<!--     + Pre-sample must be closest to chemo start from -365 days to + 5days -->
+<!--     + Sequential sample T2  -> take all -->
+<!--     + choose T2 closest to radiation start (if multiple samples) -->
+<!--     + Sequential sample T3 must be within ~~a year~~ 3 years but 100 days after radiation -->
+
+<!-- ```{r parp_only_patients} -->
+<!-- parp_patients1 <- parp_patients %>%  -->
+<!--   arrange(mrn, specimen_collection_dt) %>%  -->
+<!--   # mutate(had_parp = ifelse(!is.na(parp_start_date_1), "Yes", "No")) %>%  -->
+<!--   # mutate(had_chemo = ifelse(!is.na(chemotherapy_start_date_1), "Yes", "No")) %>%  -->
+<!--   # mutate(had_hormone = ifelse(!is.na(hormone_start_date_1), "Yes", "No")) %>% -->
+<!--   # mutate(had_immunoT = ifelse(!is.na(immunotherapy_start_date_1), "Yes", "No")) %>% -->
+<!--   # mutate(had_radioT = ifelse(!is.na(radiation_start_date_1), "Yes", "No")) %>% -->
+
+<!--   mutate(pre_sample_T1 = case_when( -->
+<!--     is.na(parp_start_date_1)                                        ~ "no PARP administration", -->
+<!--     specimen_collection_dt <= (parp_start_date_1 - days(365))       ~ "too early", -->
+<!--     # parp_start_date_1 >= chemotherapy_start_date_1 | -->
+<!--       parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad", -->
+<!--     specimen_collection_dt <= (parp_start_date_1 + days(5)) & -->
+<!--       # (specimen_collection_dt <= chemotherapy_start_date_1 | -->
+<!--       # is.na(chemotherapy_start_date_1)) & -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                ~ "Yes", ###################### Need to add date_2 if want to include the sampkes that can happen in the second regimen -->
+<!--     specimen_collection_dt > parp_start_date_1                      ~ "After PARP", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+
+<!--   mutate(post_sample_T2 = case_when( -->
+<!--     is.na(parp_start_date_1)                                        ~ "no PARP administration", -->
+<!--     specimen_collection_dt < (parp_start_date_1 + months(6))        ~ "too early", -->
+<!--     # parp_start_date_1 >= chemotherapy_start_date_1 | -->
+<!--       parp_start_date_1 >= radiation_start_date_1                   ~ "PARP after rad", -->
+
+<!--     specimen_collection_dt >= (parp_start_date_1 + months(6)) & -->
+<!--     specimen_collection_dt <= (parp_start_date_1 + years(1)) & -->
+<!--       # (specimen_collection_dt <= chemotherapy_start_date_1 | -->
+<!--       # is.na(chemotherapy_start_date_1)) & -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                ~ "Yes", -->
+<!--     specimen_collection_dt > (parp_start_date_1 + years(1))         ~ "Too late", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>%  -->
+<!--   mutate(post_sample_T3 = case_when( -->
+<!--     specimen_collection_dt > (radiation_start_date_1 + days(100)) & -->
+<!--       (specimen_collection_dt <= chemotherapy_start_date_1 | -->
+<!--       is.na(chemotherapy_start_date_1))                             ~ "Yes" -->
+<!--   )) %>%  -->
+<!--   mutate(has_good_T1 = case_when( -->
+<!--     pre_sample_T1 == "Yes"                                          ~ "Yes" -->
+<!--   )) %>% -->
+<!--   # Create T1 variables -->
+<!--   group_by(mrn, has_good_T1) %>% -->
+<!--   mutate(closest_presampleT1_date = case_when( -->
+<!--     has_good_T1 == "Yes"                                            ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   ungroup() %>%  -->
+<!--   mutate(presampleT1_id_chemo = case_when( -->
+<!--     closest_presampleT1_date == specimen_collection_dt              ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presampleT1_date = case_when( -->
+<!--     !is.na(presampleT1_id_chemo)                                    ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(time_presampleT1_parp = case_when( -->
+<!--     !is.na(presampleT1_id_chemo)                                    ~ (interval( -->
+<!--       start = closest_presampleT1_date, end = parp_start_date_1) / -->
+<!--         duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>%  -->
+<!--   fill(has_good_T1, .direction = "updown") %>%  -->
+<!--   ungroup() %>%  -->
+
+<!--   mutate(has_good_T2 = case_when( -->
+<!--     has_good_T1 == "Yes" & -->
+<!--     post_sample_T2 == "Yes"                                          ~ "Yes" -->
+<!--   )) %>% -->
+<!--   # Create T2 variables -->
+<!--   group_by(mrn, has_good_T2) %>% -->
+<!--   mutate(closest_presampleT2_date = case_when( -->
+<!--     has_good_T2 == "Yes"                                            ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   ungroup() %>%  -->
+<!--   mutate(presampleT2_id_chemo = case_when( -->
+<!--     closest_presampleT2_date == specimen_collection_dt              ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presampleT2_date = case_when( -->
+<!--     !is.na(presampleT2_id_chemo)                                    ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(time_presampleT2_parp = case_when( -->
+<!--     !is.na(presampleT2_id_chemo)                                    ~ (interval( -->
+<!--       start = closest_presampleT2_date, end = parp_start_date_1) / -->
+<!--         duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>% -->
+<!--   fill(has_good_T2, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(has_good_T3 = case_when( -->
+<!--     has_good_T2 == "Yes" & -->
+<!--     post_sample_T3 == "Yes"                                          ~ "Yes" -->
+<!--   )) %>% -->
+
+
+<!--   select(mrn, pre_sample_T1, has_good_T1, post_sample_T2, has_good_T2, -->
+<!--          has_good_T3, -->
+<!--          closest_presampleT2_date, -->
+<!--          presampleT2_id_chemo, presampleT2_date, time_presampleT2_parp, -->
+<!--          closest_presampleT1_date, -->
+<!--          presampleT1_id_chemo, presampleT1_date, time_presampleT1_parp, -->
+<!--          post_sample_T3, starts_with("has_good"), -->
+<!--          specimen_collection_dt, parp_start_date_1, chemotherapy_start_date_1, radiation_start_date_1, -->
+<!--          everything()) -->
+
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+
+<!-- ``` -->
+
+
+
+
+<!-- <!-- * Hormonetherapy:   --> -->
+<!-- <!--   + Pre-sample must be closest to drug start from -365 days to + 5days    --> -->
+<!-- <!--      + also needs to be before chemo/rad or no chemo/rad was given --> -->
+<!-- <!--   + Sequential sample T2 must be within a year but 85 days after hormone (match the average duration of chemo)   --> -->
+<!-- <!--      + also needs to be before chemo/rad or no chemo/rad was given --> -->
+<!-- <!--      + ~~also needs to be before hormone or no hormone was given~~ --> -->
+
+<!-- ```{r} -->
+<!-- blood_patients <- parp_patient %>% -->
+<!-- # blood_patients <- breast_dna %>% left_join(., Treatment, by = "mrn") %>% -->
+<!--   mutate(blood_bf_chemo = case_when( -->
+<!--     specimen_collection_dt <= (parp_start_date - days(365))  ~ "too early", -->
+<!--     specimen_collection_dt <= (parp_start_date + days(5)) & -->
+<!--       # specimen_collection_dt <= specimen_collection_dt - 365 -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                     ~ "Yes", -->
+<!--     specimen_collection_dt > parp_start_date                 ~ "No", -->
+<!--     is.na(parp_start_date)                                     ~ "not administred", -->
+<!--     TRUE                                                                 ~ "No" -->
+<!--   )) %>% -->
+<!--   mutate(blood_bf_hormone = case_when( -->
+<!--     specimen_collection_dt <= (hormone_therapy_start_date_1 - days(365))  ~ "too early", -->
+<!--     specimen_collection_dt <= (hormone_therapy_start_date_1 + days(5)) & -->
+<!--     (specimen_collection_dt <= parp_start_date | -->
+<!--       is.na(parp_start_date)) & -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                        ~ "Yes", -->
+<!--     specimen_collection_dt > hormone_therapy_start_date_1                 ~ "No", -->
+<!--     is.na(hormone_therapy_start_date_1)                                     ~ "not administred", -->
+<!--     TRUE                                                                    ~ "No" -->
+<!--   )) %>% -->
+<!--   # mutate(blood_bf_immuno = case_when( -->
+<!--   #   specimen_collection_dt <= immunotherapy_start_date_1                ~ "Yes", -->
+<!--   #   specimen_collection_dt > immunotherapy_start_date_1                 ~ "No", -->
+<!--   #   is.na(immunotherapy_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                                  ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   mutate(blood_bf_rad = case_when( -->
+<!--     specimen_collection_dt <= (radiation_start_date_1 - days(365))    ~ "too early", -->
+<!--     specimen_collection_dt <= radiation_start_date_1 & -->
+<!--       (specimen_collection_dt <= parp_start_date | -->
+<!--       is.na(parp_start_date))                                 ~ "Yes", -->
+<!--     specimen_collection_dt > radiation_start_date_1                   ~ "No", -->
+<!--     is.na(radiation_start_date_1)                                       ~ "not administred", -->
+<!--     TRUE                                                                ~ "No" -->
+<!--   )) %>% -->
+<!--   mutate(blood_bf_chemo_rad = case_when( -->
+<!--     specimen_collection_dt <= (parp_start_date - days(365))             ~ "too early", -->
+<!--     specimen_collection_dt <= (parp_start_date + days(5)) & -->
+<!--       specimen_collection_dt <= (radiation_start_date_1 + days(5))                ~ "Yes", -->
+<!--     specimen_collection_dt > (parp_start_date + days(5)) | -->
+<!--       specimen_collection_dt > (radiation_start_date_1 + days(5))                 ~ "No", -->
+<!--     is.na(parp_start_date) | -->
+<!--       is.na(radiation_start_date_1)                                     ~ "both not administred", -->
+<!--     TRUE                                                                ~ "No" -->
+<!--   )) %>% -->
+<!--   mutate(first_chemo_rad_date = case_when( -->
+<!--     parp_start_date <= radiation_start_date_1                 ~ parp_start_date, -->
+<!--     parp_start_date > radiation_start_date_1                  ~ radiation_start_date_1, -->
+<!--     TRUE                                                                ~ NA_Date_ -->
+<!--   )) %>% -->
+<!--   # mutate(blood_bf_treatment = case_when( -->
+<!--   #   specimen_collection_dt <= parp_start_date & -->
+<!--   #     specimen_collection_dt <= hormone_therapy_start_date_1 & -->
+<!--   #     specimen_collection_dt <= immunotherapy_start_date_1 & -->
+<!--   #     specimen_collection_dt <= radiation_start_date_1                ~ "Yes", -->
+<!--   #   if_any(contains("start_date_1"), ~ . < specimen_collection_dt)    ~ "No", -->
+<!--   #   # if_all(contains("start_date_1"), ~ . < specimen_collection_dt)    ~ "Nope", -->
+<!--   #   is.na(parp_start_date) | -->
+<!--   #     is.na(hormone_therapy_start_date_1) | -->
+<!--   #     is.na(immunotherapy_start_date_1) | -->
+<!--   #     is.na(radiation_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                                ~ "No" -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_chemo = case_when( -->
+<!--   #   specimen_collection_dt >= (parp_start_date - days(30)) & -->
+<!--   #     specimen_collection_dt <= (parp_start_date + days(30))              ~ "Yes", -->
+<!--   #   specimen_collection_dt > (parp_start_date + days(30))                 ~ "No", -->
+<!--   #   is.na(parp_start_date)                                     ~ "not administred", -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_hormone = case_when( -->
+<!--   #   specimen_collection_dt <= (hormone_therapy_start_date_1 + days(30))                ~ "Yes", -->
+<!--   #   specimen_collection_dt > (hormone_therapy_start_date_1 + days(30))                 ~ "No", -->
+<!--   #   is.na(hormone_therapy_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_immuno = case_when( -->
+<!--   #   specimen_collection_dt <= (immunotherapy_start_date_1 + days(30))                ~ "Yes", -->
+<!--   #   specimen_collection_dt > (immunotherapy_start_date_1 + days(30))                 ~ "No", -->
+<!--   #   is.na(immunotherapy_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_rad = case_when( -->
+<!--   #   specimen_collection_dt <= (radiation_start_date_1 + days(30))                ~ "Yes", -->
+<!--   #   specimen_collection_dt > (radiation_start_date_1 + days(30))                 ~ "No", -->
+<!--   #   is.na(radiation_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_chemo_rad = case_when( -->
+<!--   #   specimen_collection_dt <= (parp_start_date + days(30)) & -->
+<!--   #     specimen_collection_dt <= (radiation_start_date_1 + days(30))                ~ "Yes", -->
+<!--   #   specimen_collection_dt > (parp_start_date + days(30)) & -->
+<!--   #     specimen_collection_dt > (radiation_start_date_1 + days(30))                 ~ "No", -->
+<!--   #   is.na(parp_start_date) | -->
+<!--   #     is.na(radiation_start_date_1)                                 ~ "not administred", -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(blood_bf_30_days_treatment = case_when( -->
+<!--   #   specimen_collection_dt <= (parp_start_date + days(30)) & -->
+<!--   #     specimen_collection_dt <= (hormone_therapy_start_date_1 + days(30)) & -->
+<!--   #     specimen_collection_dt <= (immunotherapy_start_date_1 + days(30)) & -->
+<!--   #     specimen_collection_dt <= (radiation_start_date_1 + days(30))                ~ "Yes", -->
+<!--   #   if_any(contains("start_date_1"), ~ (.  + days(30)) < specimen_collection_dt)    ~ "No", -->
+<!--   #   # if_all(contains("start_date_1"), ~ . < specimen_collection_dt)    ~ "Nope", -->
+<!--   #   is.na(parp_start_date) | -->
+<!--   #     is.na(hormone_therapy_start_date_1) | -->
+<!--   #     is.na(immunotherapy_start_date_1) | -->
+<!--   #     is.na(radiation_start_date_1)                                     ~ "not administred", -->
+<!--   #   TRUE                                                                ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   mutate(across(contains("blood_bf_"), ~ factor(., levels = c("Yes", "No", "not administred")))) %>% -->
+
+<!--   # ungroup() %>% -->
+<!--   # mutate(treatment_bf_blood = case_when( -->
+<!--   #   specimen_collection_dt <= treatment_start_date                ~ "Blood first", -->
+<!--   #   specimen_collection_dt <= treatment_start_date                ~ treatment_line, -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(treatment_bf_30days_blood = case_when( -->
+<!--   #   specimen_collection_dt <= (treatment_start_date + days(30))   ~ "Blood first", -->
+<!--   #   specimen_collection_dt <= (treatment_start_date + days(30))   ~ treatment_line, -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # -->
+<!--   # mutate(treatment_after_blood = case_when( -->
+<!--   #   specimen_collection_dt > treatment_start_date                 ~ treatment_line, -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # mutate(treatment_after_30days_blood = case_when( -->
+<!--   #   specimen_collection_dt > (treatment_start_date + days(30))   ~ treatment_line, -->
+<!--   #   TRUE                                                            ~ NA_character_ -->
+<!--   # )) %>% -->
+<!--   # distinct(deidentified_patient_id, sample_family_id_sf, sample_id, -->
+<!--   #          specimen_collection_dt, ) -->
+<!--   # arrange(mrn, deidentified_patient_id, specimen_collection_dt, blood_bf_treatment) %>% -->
+<!--   # group_by(mrn, deidentified_patient_id) %>% -->
+<!--   # mutate(sample_lag = specimen_collection_dt - lag(specimen_collection_dt), -->
+<!--   #        sample_lag = str_remove(sample_lag, " days") -->
+<!--   #        ) %>% -->
+<!--   # mutate(has_a_good_sample = case_when( -->
+<!--   #   if_any(contains("blood_bf_"), ~ . == "Yes")    ~ "Yes" -->
+<!--   # )) %>% -->
+<!--   # fill(has_a_good_sample, .direction = "down") %>% -->
+<!--   # mutate(has_a_good_seq_sample = case_when( -->
+<!--   #   blood_bf_30_days_chemo_rad == "No" & -->
+<!--   #     has_a_good_sample == "Yes" & -->
+<!--   #     sample_lag > 30                             ~ "Yes" -->
+<!--   # )) %>% -->
+<!--   arrange(mrn, deidentified_patient_id, specimen_collection_dt) %>% -->
+<!--   select(mrn, deidentified_patient_id, specimen_collection_dt, #sample_lag, has_a_good_sample, has_a_good_seq_sample, -->
+<!--          "blood_bf_chemo", "blood_bf_rad", -->
+<!--          # "blood_bf_immuno", -->
+<!--          "blood_bf_hormone", -->
+<!--          "blood_bf_chemo_rad", -->
+<!--          # "blood_bf_treatment", -->
+<!--          everything()) -->
+<!-- ``` -->
+
+
+<!-- ```{r code pre and sequential} -->
+<!-- blood_patients2 <- blood_patients %>% -->
+<!--   ###### Chemo samples ---- -->
+<!--   mutate(had_good_sample_chemo = case_when( -->
+<!--     blood_bf_chemo == "Yes"                    ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id, had_good_sample_chemo) %>% -->
+<!--   mutate(closest_chemo_presample_date = case_when( -->
+<!--     had_good_sample_chemo == "Yes"            ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   mutate(interval_presample_chemo = case_when( -->
+<!--     closest_chemo_presample_date == specimen_collection_dt  ~ -->
+<!--       (interval(start = closest_chemo_presample_date, end = parp_start_date) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   mutate(presample_id_chemo = case_when( -->
+<!--     !is.na(interval_presample_chemo)       ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presample_date_chemo = case_when( -->
+<!--     !is.na(presample_id_chemo)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+
+<!--   # Find sequential samples -->
+<!--   mutate(presample_chemo_within_limits = had_good_sample_chemo) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(presample_chemo_within_limits, #interval_presample_chemo, -->
+<!--        closest_chemo_presample_date, .direction = "updown") %>% -->
+<!--   mutate(seq_sample_chemo = case_when( -->
+<!--     presample_chemo_within_limits == "Yes" & -->
+<!--       blood_bf_chemo == "No" & -->
+<!--       specimen_collection_dt >= chemotherapy_end_date1_1 & -->
+<!--       specimen_collection_dt <= (parp_start_date + years(3)) & #specimen_collection_dt <= chemotherapy_start_date_2 &# days(365)) & -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   group_by(mrn, seq_sample_chemo) %>% -->
+<!--   mutate(is_first_seq_sample = case_when( -->
+<!--     seq_sample_chemo == "Yes" & -->
+<!--     specimen_collection_dt == first(specimen_collection_dt)     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(seqsample_id_chemo = case_when( -->
+<!--     is_first_seq_sample == "Yes"                                    ~ sample_id -->
+<!--   )) %>% -->
+
+<!--   mutate(seqsample_date_chemo = case_when( -->
+<!--     !is.na(seqsample_id_chemo)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(seqsample_before_2nd_regimen = case_when( -->
+<!--     !is.na(seqsample_id_chemo) & -->
+<!--       specimen_collection_dt <= chemotherapy_start_date_2        ~ "sample before 2nd regimen", -->
+<!--     !is.na(seqsample_id_chemo) & -->
+<!--       specimen_collection_dt > chemotherapy_start_date_2         ~ "sample after" -->
+<!--   )) %>% -->
+<!--   mutate(have_good_seqsample_chemo = case_when( -->
+<!--     seq_sample_chemo == "Yes"                                       ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>% -->
+<!--   fill(have_good_seqsample_chemo, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(time_chemo_seqsample = case_when( -->
+<!--     seq_sample_chemo == "Yes"        ~ ( -->
+<!--       interval(start = parp_start_date, end = specimen_collection_dt) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--     ))) %>% -->
+<!--   mutate(interval_prepost_sample_chemo = case_when( -->
+<!--     !is.na(seqsample_id_chemo)                                     ~ -->
+<!--       abs(interval(start = closest_chemo_presample_date, end = specimen_collection_dt) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+
+<!--   ###### Rad samples ---- -->
+<!--   mutate(had_good_sample_rad = case_when( -->
+<!--     blood_bf_rad == "Yes"              ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id, had_good_sample_rad) %>% -->
+<!--   mutate(closest_rad_presample_date = case_when( -->
+<!--     had_good_sample_rad == "Yes"       ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   mutate(interval_presample_rad = case_when( -->
+<!--     closest_rad_presample_date == specimen_collection_dt  ~ -->
+<!--       (interval(start = closest_rad_presample_date, end = radiation_start_date_1) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   mutate(presample_id_rad = case_when( -->
+<!--     !is.na(interval_presample_rad)                           ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presample_date_rad = case_when( -->
+<!--     !is.na(presample_id_rad)                                        ~ specimen_collection_dt -->
+<!--   )) %>% -->
+
+<!--   # Find sequential samples -->
+<!--   mutate(presample_rad_within_limits = had_good_sample_rad) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(presample_rad_within_limits, #interval_presample_rad, -->
+<!--        closest_rad_presample_date, .direction = "updown") %>% -->
+<!--   mutate(seq_sample_rad = case_when( -->
+<!--     presample_rad_within_limits == "Yes" & -->
+<!--       blood_bf_rad == "No" & -->
+<!--       specimen_collection_dt > (radiation_start_date_1 + days(100)) & -->
+<!--       specimen_collection_dt <= (radiation_start_date_1 + years(3)) & specimen_collection_dt <= radiation_start_date_2 &# days(365)) & -->
+<!--       (specimen_collection_dt <= parp_start_date | -->
+<!--       is.na(parp_start_date))                              ~ "Yes", -->
+<!--     TRUE ~ "No" -->
+<!--   )) %>% -->
+
+<!--   group_by(mrn, seq_sample_rad) %>% -->
+<!--   mutate(is_first_seq_sample = case_when( -->
+<!--     seq_sample_rad == "Yes" & -->
+<!--     specimen_collection_dt == first(specimen_collection_dt)     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(seqsample_id_rad = case_when( -->
+<!--     is_first_seq_sample == "Yes"                                    ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(seqsample_date_rad = case_when( -->
+<!--     !is.na(seqsample_id_rad)                                        ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(have_good_seqsample_rad = case_when( -->
+<!--     seq_sample_rad == "Yes"                                         ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>% -->
+<!--   fill(have_good_seqsample_rad, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(time_rad_seqsample = case_when( -->
+<!--     seq_sample_rad == "Yes"        ~ ( -->
+<!--       interval(start = radiation_start_date_1, end = specimen_collection_dt) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(interval_prepost_sample_rad = -->
+<!--            abs(interval(start = closest_rad_presample_date, end = specimen_collection_dt) / -->
+<!--                  duration(n = 1, units = "days"))) %>% -->
+
+<!--   ###### hormone samples ---- -->
+<!--   mutate(had_good_sample_hormone = case_when( -->
+<!--     blood_bf_hormone == "Yes"              ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id, had_good_sample_hormone) %>% -->
+<!--   mutate(closest_hormone_presample_date = case_when( -->
+<!--     had_good_sample_hormone == "Yes"       ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   mutate(interval_presample_hormone = case_when( -->
+<!--     closest_hormone_presample_date == specimen_collection_dt  ~ -->
+<!--       (interval(start = closest_hormone_presample_date, end = hormone_therapy_start_date_1) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   mutate(presample_id_hormone = case_when( -->
+<!--     !is.na(interval_presample_hormone)                           ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presample_date_hormone = case_when( -->
+<!--     !is.na(presample_id_hormone)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+
+<!--   # Find sequential samples -->
+<!--   mutate(presample_hormone_within_limits = had_good_sample_hormone) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(presample_hormone_within_limits, #interval_presample_hormone, -->
+<!--        closest_hormone_presample_date, .direction = "updown") %>% -->
+<!--   mutate(seq_sample_hormone = case_when( -->
+<!--     presample_hormone_within_limits == "Yes" & -->
+<!--       blood_bf_hormone == "No" & -->
+<!--       specimen_collection_dt >= (hormone_therapy_start_date_1 + days(85)) & -->
+<!--       specimen_collection_dt <= (hormone_therapy_start_date_1 + years(3)) & #specimen_collection_dt <= hormone_therapy_start_date_2 &# days(365)) & -->
+<!--       (specimen_collection_dt <= parp_start_date | -->
+<!--       is.na(parp_start_date)) & -->
+<!--       (specimen_collection_dt <= radiation_start_date_1 | -->
+<!--       is.na(radiation_start_date_1))                                     ~ "Yes", -->
+<!--     TRUE ~ "No" -->
+<!--   )) %>% -->
+
+<!--   group_by(mrn, seq_sample_hormone) %>% -->
+<!--   mutate(is_first_seq_sample = case_when( -->
+<!--     seq_sample_hormone == "Yes" & -->
+<!--     specimen_collection_dt == first(specimen_collection_dt)     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(seqsample_id_hormone = case_when( -->
+<!--     is_first_seq_sample == "Yes"                                    ~ sample_id -->
+<!--   )) %>% -->
+
+<!--   mutate(seqsample_date_hormone = case_when( -->
+<!--     !is.na(seqsample_id_hormone)                                      ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(seqsample_before_2nd_regimen_hormone = case_when( -->
+<!--     !is.na(seqsample_id_hormone) & -->
+<!--       specimen_collection_dt <= hormone_therapy_start_date_2        ~ "sample before 2nd regimen", -->
+<!--     !is.na(seqsample_id_hormone) & -->
+<!--       specimen_collection_dt > hormone_therapy_start_date_2         ~ "sample after" -->
+<!--   )) %>% -->
+<!--   mutate(have_good_seqsample_hormone = case_when( -->
+<!--     seq_sample_hormone == "Yes"                                       ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>% -->
+<!--   fill(have_good_seqsample_hormone, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(time_hormone_seqsample = case_when( -->
+<!--     seq_sample_hormone == "Yes"        ~ ( -->
+<!--       interval(start = hormone_therapy_start_date_1, end = specimen_collection_dt) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(interval_prepost_sample_hormone = -->
+<!--            abs(interval(start = closest_hormone_presample_date, end = specimen_collection_dt) / -->
+<!--                  duration(n = 1, units = "days"))) %>% -->
+
+
+
+<!--   ###### C + Rad samples ---- -->
+<!--   mutate(had_good_sample_chemrad = case_when( -->
+<!--     blood_bf_chemo_rad == "Yes"                              ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id, had_good_sample_chemrad) %>% -->
+<!--   mutate(closest_chemorad_presample_date = case_when( -->
+<!--     had_good_sample_chemrad == "Yes"                         ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   mutate(interval_presample_chemrad = case_when( -->
+<!--     closest_chemorad_presample_date == specimen_collection_dt  ~ -->
+<!--       (interval(start = closest_chemorad_presample_date, end = first_chemo_rad_date) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   mutate(presample_id_chemorad = case_when( -->
+<!--     !is.na(interval_presample_chemrad)                       ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presample_date_chemorad = case_when( -->
+<!--     !is.na(presample_id_chemorad)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+
+<!--   # Find sequential samples -->
+<!--   mutate(presample_chemorad_within_limits = had_good_sample_chemrad) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(presample_chemorad_within_limits, #interval_presample_chemrad, -->
+<!--        closest_chemorad_presample_date, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   # Intermediate var for seq sample -->
+<!--   mutate(interval_chemo_rad = -->
+<!--            abs(interval(start = parp_start_date, end = radiation_start_date_1) / -->
+<!--         duration(n= 1, units = "days")) -->
+<!--         ) %>% -->
+<!--   mutate(second_chemorad_date = first_chemo_rad_date + abs(interval_chemo_rad)) %>% -->
+<!--   mutate(seq_sample_chemorad = case_when( -->
+<!--     presample_chemorad_within_limits == "Yes" & -->
+<!--       blood_bf_chemo_rad == "No" & -->
+<!--       specimen_collection_dt > (second_chemorad_date + days(100)) & -->
+<!--       specimen_collection_dt <= (second_chemorad_date + days(365)) ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+
+<!--   group_by(mrn, seq_sample_chemorad) %>% -->
+<!--   mutate(is_first_seq_sample = case_when( -->
+<!--     seq_sample_chemorad == "Yes" & -->
+<!--     specimen_collection_dt == first(specimen_collection_dt)     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(seqsample_id_chemorad = case_when( -->
+<!--     is_first_seq_sample == "Yes"                                    ~ sample_id -->
+<!--   )) %>% -->
+
+<!--   mutate(seqsample_date_chemorad = case_when( -->
+<!--     !is.na(seqsample_id_chemorad)                                   ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(have_good_seqsample_chemorad = case_when( -->
+<!--     seq_sample_chemorad == "Yes"                                    ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(mrn) %>% -->
+<!--   fill(have_good_seqsample_chemorad, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   # select(deidentified_patient_id, specimen_collection_dt, had_good_sample_chemrad, closest_chemorad_presample_date, first_chemo_rad_date,second_chemrad_date,second_chemrad_date, seq_sample_chemorad, parp_start_date, radiation_start_date_1) -->
+<!--   mutate(time_chemorad_seqsample = case_when( -->
+<!--     seq_sample_chemorad == "Yes"                             ~ ( -->
+<!--       interval(start = second_chemorad_date, end = specimen_collection_dt) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(interval_prepost_sample_chemorad = -->
+<!--            abs(interval(start = closest_chemorad_presample_date, end = specimen_collection_dt) / -->
+<!--                  duration(n = 1, units = "days"))) %>% -->
+
+<!--   ###### C then Rad sample ---- -->
+<!--   mutate(had_good_sample_chemo_rad = case_when( -->
+<!--     blood_bf_chemo_rad == "Yes" & -->
+<!--       parp_start_date < radiation_start_date_1     ~ "Yes" -->
+<!--   )) %>% -->
+<!--   select(deidentified_patient_id, sample_id, specimen_collection_dt, blood_bf_chemo_rad, -->
+<!--          parp_start_date, radiation_start_date_1, had_good_sample_chemo_rad, -->
+<!--          first_chemo_rad_date, everything()) %>% -->
+
+
+<!--   group_by(deidentified_patient_id, had_good_sample_chemo_rad) %>% -->
+<!--   mutate(closest_chemo_rad_presample_date = case_when( -->
+<!--     had_good_sample_chemo_rad == "Yes"                       ~ last(specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   mutate(interval_presample_chemo_rad = case_when( -->
+<!--     closest_chemo_rad_presample_date == specimen_collection_dt  ~ -->
+<!--       (interval(start = closest_chemo_rad_presample_date, end = parp_start_date) / -->
+<!--                  duration(n = 1, units = "days")) -->
+<!--   )) %>% -->
+<!--   mutate(presample_id_chemo_rad = case_when( -->
+<!--     !is.na(interval_presample_chemo_rad)                     ~ sample_id -->
+<!--   )) %>% -->
+<!--   mutate(presample_date_chemo_rad = case_when( -->
+<!--     !is.na(presample_id_chemo_rad)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+
+<!--   # Find seq sample after C and before R -->
+<!--   mutate(presample_chemo_rad_within_limits = had_good_sample_chemo_rad) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(presample_chemo_rad_within_limits, #closest_chemo_rad_presample_date, -->
+<!--        .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(seq_sample_Achemo_Brad = case_when( -->
+<!--     presample_chemo_rad_within_limits == "Yes" & -->
+<!--       blood_bf_chemo_rad == "No" & -->
+<!--       # specimen_collection_dt > (parp_start_date + days(100)) & -->
+<!--       # specimen_collection_dt > chemotherapy_end_date1_1 & -->
+<!--       specimen_collection_dt > parp_start_date & -->
+<!--       specimen_collection_dt <= radiation_start_date_1            ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id, seq_sample_Achemo_Brad) %>% -->
+<!--   mutate(seqsample_id_Achemo = case_when( -->
+<!--     seq_sample_Achemo_Brad == "Yes"                                 ~ last(sample_id) -->
+<!--   ), seqsample_id_Achemo = case_when( -->
+<!--     seqsample_id_Achemo == sample_id                                ~ seqsample_id_Achemo, -->
+<!--     TRUE                                                            ~ NA_character_ -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(seqsample_date_Achemo = case_when( -->
+<!--     !is.na(seqsample_id_Achemo)                                     ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(had_good_seqsample_Achemo = case_when( -->
+<!--     seq_sample_Achemo_Brad == "Yes"                                 ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   mutate(after_chemo_seqsample_date = case_when( -->
+<!--     had_good_seqsample_Achemo == "Yes"                              ~ (specimen_collection_dt) -->
+<!--   )) %>% -->
+<!--   # Look for seq sample after CR -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(had_good_seqsample_Achemo, after_chemo_seqsample_date, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+<!--   mutate(seq_sample_Achemo_Arad = case_when( -->
+<!--     presample_chemo_rad_within_limits == "Yes" & -->
+<!--       blood_bf_chemo_rad == "No" & -->
+<!--       had_good_seqsample_Achemo == "Yes" & -->
+<!--       specimen_collection_dt > (radiation_start_date_1 + days(100)) & -->
+<!--       specimen_collection_dt <= (radiation_start_date_1 + years(3)) #& -->
+<!--       # (specimen_collection_dt <= chemotherapy_start_date_2 & ####### code for 3 years filter -->
+<!--       #    specimen_collection_dt <= radiation_start_date_2) # days(365)) -->
+<!--     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+
+<!--   group_by(mrn, seq_sample_Achemo_Arad) %>% -->
+<!--   mutate(is_first_seq_sample = case_when( -->
+<!--     seq_sample_Achemo_Arad == "Yes" & -->
+<!--     specimen_collection_dt == first(specimen_collection_dt)     ~ "Yes", -->
+<!--     TRUE                                                            ~ "No" -->
+<!--   )) %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(seqsample_id_Achemorad = case_when( -->
+<!--     is_first_seq_sample == "Yes"                                    ~ sample_id -->
+<!--   )) %>% -->
+
+<!--   mutate(seqsample_date_Achemorad = case_when( -->
+<!--     !is.na(seqsample_id_Achemorad)                                  ~ specimen_collection_dt -->
+<!--   )) %>% -->
+<!--   mutate(had_good_seqsample_Achemorad = case_when( -->
+<!--     seq_sample_Achemo_Arad == "Yes"                                 ~ "Yes" -->
+<!--   )) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(had_good_seqsample_Achemorad, .direction = "updown") %>% -->
+<!--   ungroup() %>% -->
+
+<!--   mutate(time_chemo_1st_seqsample = case_when( -->
+<!--     seq_sample_Achemo_Brad == "Yes"        ~ ( -->
+<!--       interval(start = parp_start_date, end = seqsample_date_Achemo) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(time_1st_seqsample_rad = case_when( -->
+<!--     seq_sample_Achemo_Brad == "Yes"        ~ ( -->
+<!--       interval(start = seqsample_date_Achemo, end = radiation_start_date_1) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(time_rad_2nd_seqsample = case_when( -->
+<!--     seq_sample_Achemo_Arad == "Yes"        ~ ( -->
+<!--       interval(start = radiation_start_date_1, end = seqsample_date_Achemorad) / -->
+<!--         duration(n= 1, units = "days") -->
+<!--   ))) %>% -->
+<!--   mutate(interval_prepost_sample_chemo_rad = case_when( -->
+<!--     !is.na(time_rad_2nd_seqsample)                                  ~ abs( -->
+<!--       interval(start = after_chemo_seqsample_date, end = specimen_collection_dt) / -->
+<!--         duration(n = 1, units = "days") -->
+<!--   ))) %>% -->
+
+<!--   mutate(across(where(is.numeric), ~ round(., 2))) %>% -->
+<!--   select(-is_first_seq_sample) -->
+
+
+<!--   ################### -->
+<!--   # mutate(had_good_sample_treatment = case_when( -->
+<!--   #   blood_bf_treatment == "Yes"              ~ "Yes" -->
+<!--   # )) %>% -->
+<!--   # group_by(deidentified_patient_id) %>% -->
+<!--   # fill(had_good_sample_treatment, .direction = "updown") %>% -->
+<!--   # mutate(seq_sample_treatment = case_when( -->
+<!--   #   had_good_sample_treatment == "Yes" & -->
+<!--   #     blood_bf_treatment == "No" ~ "Yes", -->
+<!--   #   TRUE ~ "No" -->
+<!--   # )) %>% -->
+<!--   # ungroup() %>% -->
+<!--   # select(deidentified_patient_id, specimen_collection_dt, -->
+<!--   #        blood_bf_chemo, closest_chemo_presample_date, -->
+<!--   #        "had_good_sample_chemo", "seq_sample_chemo", -->
+<!--   #        time_chemo_seqsample, -->
+<!--   #        everything()) -->
+<!-- # blood_patients2 <- read_rds(paste0(here::here(), "/blood_patients2_3years.rds")) -->
+<!-- ``` -->
+
+<!-- Remove already sequenced patients -->
+<!-- ```{r} -->
+<!-- samples <- read_rds(paste0(here::here(), "/samples sequenced as of june 2023.rds")) -->
+
+<!-- data <-  -->
+<!--   read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds") -->
+<!-- data <- data %>%  -->
+<!--   select(deidentified_patient_id, mrn) %>%  -->
+<!--   distinct() -->
+
+<!-- seq_samples <- -->
+<!--   samples %>%  -->
+<!--   right_join(data, .,  -->
+<!--              by = c("deidentified_patient_id" = "sample_deidentified_id")) %>%  -->
+<!--   group_by(mrn) %>%  -->
+<!--   mutate(n = n()) %>%  -->
+<!--   filter(n == 1) %>%  -->
+<!--   filter(sample_timing == "pre") -->
+<!-- paired_seq_samples <- -->
+<!--   samples %>%  -->
+<!--   right_join(data, .,  -->
+<!--              by = c("deidentified_patient_id" = "sample_deidentified_id")) %>%  -->
+<!--   group_by(mrn) %>%  -->
+<!--   mutate(n = n()) %>%  -->
+<!--   filter(n == 2) %>%  -->
+<!--   distinct(deidentified_patient_id, mrn) -->
+
+<!-- # Remove paired seq patients -->
+<!-- blood_patients2 <- blood_patients2 %>%  -->
+<!--   filter(!str_detect(mrn, paste0(paired_seq_samples$mrn, collapse = "|"))) %>%  -->
+<!--   mutate(sample_id = str_to_upper(sample_id)) %>%  -->
+<!--   mutate(presample_already_sequenced = case_when( -->
+<!--     str_detect(sample_id, paste0(seq_samples$sample_name_secondary, collapse = "|"))       ~ "Yes" -->
+<!--   ), -->
+<!--   presample_patient_already_sequenced = presample_already_sequenced) %>%  -->
+<!--   group_by(mrn) %>%  -->
+<!--   fill(presample_patient_already_sequenced, .direction = "updown") %>%  -->
+<!--   ungroup() -->
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- # II. Table patients with Blood before and after treatment -->
+<!-- ```{r} -->
+<!-- tbl1_1 <- blood_patients2 %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(Chemotherapy = presample_chemo_within_limits) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) %>%  -->
+<!--   modify_header(update = list( -->
+<!--   stat_0 ~ '**Patients with Blood before Treatment**' -->
+<!-- )) -->
+<!-- tbl2_1 <- blood_patients2 %>% -->
+<!--     distinct(deidentified_patient_id, .keep_all = TRUE) %>% -->
+<!--   select(Hormonetherapy = presample_hormone_within_limits) %>% -->
+<!--   tbl_summary() -->
+<!-- # tbl3 <- blood_patients2 %>% #filter(had_immuno == "Yes") %>%  -->
+<!-- #   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!-- #   select(Immnunotherapy = blood_bf_immuno) %>%  -->
+<!-- #   tbl_summary() -->
+<!-- tbl4_1 <- blood_patients2 %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(Radiotherapy = presample_rad_within_limits) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- tbl5_1 <- blood_patients2 %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(`Chemotherapy then Radiation` = presample_chemo_rad_within_limits) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- tbl6_1 <- blood_patients2 %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(`C+R or R+C` = presample_chemorad_within_limits) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- # tbl6 <- blood_patients2 %>% #filter(had_treatment == "Yes") %>%  -->
+<!-- #   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!-- #   select(`All Treatment` = blood_bf_treatment) %>%  -->
+<!-- #   tbl_summary() -->
+
+<!-- # tbl_s1 <- tbl_stack(list(tbl1, tbl4, tbl5)) -->
+
+<!-- tbl1_2 <- blood_patients2 %>%  -->
+<!--   filter(!is.na(have_good_seqsample_chemo) & !is.na(seqsample_id_chemo)) %>% -->
+
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(Chemotherapy = seq_sample_chemo) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) %>%  -->
+<!--   modify_header(update = list( -->
+<!--   stat_0 ~ '**Patients with Sequential Blood after Treatment(s)**' -->
+<!-- )) -->
+<!-- tbl2_2 <- blood_patients2 %>%  -->
+<!--   filter(!is.na(seqsample_id_hormone)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>% -->
+<!--   select(Hormonetherapy = seq_sample_hormone) %>% -->
+<!--   add_row(Hormonetherapy = "none") %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- # tbl3 <- blood_patients2 %>% filter(had_immuno == "Yes") %>%  -->
+<!-- #   filter(had_good_sample_chemo == "Yes") %>% -->
+<!-- #   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!-- #   select(Immnunotherapy = seq_sample_immuno) %>%  -->
+<!-- #   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- tbl4_2 <- blood_patients2 %>%  -->
+<!--   filter(!is.na(seqsample_id_rad)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(Radiotherapy = seq_sample_rad) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- tbl5_2 <- blood_patients2 %>%  -->
+<!--   filter(!is.na(seqsample_id_Achemorad)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(`Chemotherapy then Radiation` = had_good_seqsample_Achemorad) %>%  -->
+<!--   add_row(`Chemotherapy then Radiation` = "none") %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- tbl6_2 <- blood_patients2 %>% -->
+<!--   filter(seq_sample_chemorad == "Yes") %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(`C+R or R+C` = seq_sample_chemorad) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+<!-- # tbl6 <- blood_patients2 %>% #filter(had_treatment == "Yes") %>%  -->
+<!-- #   filter(seq_sample_treatment == "Yes") %>% -->
+<!-- #   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!-- #   select(`All Treatment` = seq_sample_treatment) %>%  -->
+<!-- #   tbl_summary(statistic = list(all_categorical() ~ "{n}")) -->
+
+<!-- # tbl_s2 <- tbl_stack(list(tbl1, tbl4, tbl5#, tbl6 -->
+<!-- #                          )) -->
+
+<!-- tbl5_3 <- blood_patients2 %>%  -->
+<!--   filter(!is.na(seqsample_id_Achemo)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(`Chemotherapy then Radiation` = had_good_seqsample_Achemo) %>%  -->
+<!--   tbl_summary(statistic = list(all_categorical() ~ "{n}")) %>%  -->
+<!--   modify_header(update = list( -->
+<!--   stat_0 ~ '**Patients with Sequential Blood after Chemo and before Radiation**' -->
+<!-- )) -->
+
+<!-- tbl_s1 <- tbl_merge(list(tbl1_1, tbl1_2)) -->
+<!-- tbl_s2 <- tbl_merge(list(tbl2_1, tbl2_2)) -->
+<!-- tbl_s4 <- tbl_merge(list(tbl4_1, tbl4_2)) -->
+<!-- tbl_s5 <- tbl_merge(list(tbl5_1, tbl5_2)) -->
+
+<!-- tbl_stack(list(tbl_s1, tbl_s4, tbl_s5, tbl_s2)) %>% -->
+<!--    modify_header(list(label ~ "**Treatment Type**")) %>%  -->
+<!--   modify_spanning_header(everything() ~ NA_character_) %>% as_gt() #%>%   -->
+<!--   # gt::tab_source_note(gt::md("*The number of patients with a blood sample before each treatment type is located  -->
+<!--   #                            in the first column. <br>  -->
+<!--   #                            From this number, the second column represent the number of patients with a blood  -->
+<!--   #                            sample after each treatment type. <br>  -->
+<!--   #                            For the case of Chemotherapy then Radiation, the number of patients with a blood -->
+<!--   #                            sample after Chemo and before Radiation is located in the third column. <br> -->
+<!--   #                            I added the 'C+R or R+C' treatment category in case we want extra samples after -->
+<!--   #                            both treatment for comparison. It represent a chemo and radiation treatment  -->
+<!--   #                            regardless of what comes first. I didn't look at the samples in between the  -->
+<!--   #                            treatment as it is not in the plan.*")) -->
+
+
+<!-- ``` -->
+
+<!-- # III. Chemo group -->
+<!-- ```{r} -->
+<!-- chemo_patients <- blood_patients2 %>%  -->
+<!--   filter(!is.na(have_good_seqsample_chemo) &  -->
+<!--            (!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo))) -->
+
+<!-- table(chemo_patients$presample_patient_already_sequenced) -->
+<!-- print("2 patients have already a pre-sample sequenced") -->
+<!-- # chemo_patients <- blood_patients2 %>% -->
+<!-- #   filter( -->
+<!-- #     str_detect( -->
+<!-- #       deidentified_patient_id,  -->
+<!-- #       paste0(chemo_patients$deidentified_patient_id, collapse = "|"))) -->
+<!-- ``` -->
+
+<!-- ## 1.Samples before treatment -->
+<!-- ```{r} -->
+<!-- sample_before_chemo <- chemo_patients %>%  -->
+<!--   filter(!is.na(interval_presample_chemo)) %>% -->
+<!--   arrange(deidentified_patient_id, interval_presample_chemo) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) -->
+
+<!-- sample_before_chemo %>% -->
+<!--   ggplot(aes(x =interval_presample_chemo -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") + -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Blood Collection T1 to Chemotherapy (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 7 days", -->
+<!--        title = "Patients who had a sequential sample after Chemotherapy") -->
+<!-- ``` -->
+
+<!-- ## 2.Samples after treatments -->
+<!-- ```{r} -->
+<!-- sample_after_chemo <- chemo_patients %>%  -->
+<!--   filter(!is.na(time_chemo_seqsample)) %>% -->
+<!--   arrange(deidentified_patient_id, time_chemo_seqsample) %>% -->
+<!--   distinct(deidentified_patient_id, specimen_collection_dt, .keep_all = TRUE) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% -->
+<!--   ungroup() -->
+
+<!-- sample_after_chemo %>% -->
+<!--   ggplot(aes(x =time_chemo_seqsample, fill = sequential_sample_count))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Chemotherapy start to \nT2 Sequential Blood Collection (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 100 days", -->
+<!--        title = "Patients who had a sequential sample after Chemotherapy") -->
+<!-- ``` -->
+
+<!-- ## 3.Time between chemotherapy stop date and T2 -->
+
+<!-- ```{r} -->
+<!-- chemo_patients %>% -->
+<!--   filter(!is.na(seqsample_date_chemo)) %>% -->
+<!--   mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_chemo)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x= chemo_stop_T2))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   # scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Chemotherapy stop date to T2 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients with sequential samples after Chemotherapy", -->
+<!--        caption = "Each bar represents 100 days") -->
+
+<!-- chemo_patients %>% -->
+<!--   filter(!is.na(seqsample_date_chemo)) %>% -->
+<!--   mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_chemo)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(chemo_stop_T2) %>%  -->
+<!--   tbl_summary() -->
+<!-- ``` -->
+
+<!-- ## 4.Time between T1 and T2 -->
+<!-- ```{r} -->
+<!-- chemo_patients %>%  -->
+<!--   filter(!is.na(time_chemo_seqsample)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x =interval_prepost_sample_chemo -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 30, fill= "darkblue") + -->
+<!--   xlim(0, 400)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Pre Sample to \nPost Sample / Chemotherapy (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 30 days") -->
+<!-- ``` -->
+<!-- I coded a de-identified ID for each patient, I used strips to visualize them better.   -->
+<!-- This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient. -->
+
+
+<!-- ```{r} -->
+<!-- chemo_patients <- chemo_patients %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_chemo)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   mutate(ID = dense_rank(deidentified_patient_id)) -->
+
+<!-- df <- chemo_patients %>% -->
+<!--   select(deidentified_patient_id, ID, -->
+<!--          "number post treatment sample"  = sequential_sample_count,  -->
+<!--          "days from pre sample to chemo start" = interval_presample_chemo, -->
+<!--          chemo_stop_T2, -->
+<!--          seqsample_before_2nd_regimen, -->
+<!--          "days from chemo start to sequential sample" =  time_chemo_seqsample) -->
+
+<!-- color.me1 <- which((df$ID %% 2)  == 1) -->
+<!-- # color.me <- which(df$`number post treatment sample` == 2) -->
+<!-- # color.me.bold <- which((df$ID %% 2)  == 1) -->
+<!-- color.me.pre <- which(df$`number post treatment sample` == 1) -->
+<!-- color.me.seq1 <- which(df$`number post treatment sample` == 2) -->
+
+
+<!-- df %>% select(-ID) %>%  -->
+<!--   kable(booktabs = T, align = "ccl") %>% -->
+<!--   # kable_styling(latex_options = "striped", stripe_color = "red") #%>% -->
+<!--   # row_spec(color.me, background = "#eee") %>% -->
+<!--   row_spec(color.me1, background = "#eee") %>% -->
+<!--   row_spec(color.me.pre, color = "blue") %>% -->
+<!--   row_spec(color.me.seq1, color = "red") -->
+
+<!-- df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from pre sample to chemo start`),2), -->
+<!--             median = round(median(`days from pre sample to chemo start`),2)) -->
+
+<!-- df <- df %>% filter(!is.na(`days from chemo start to sequential sample`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from chemo start to sequential sample`),2), -->
+<!--             median = round(median(`days from chemo start to sequential sample`),2)) -->
+<!-- ``` -->
+<!-- `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.   -->
+<!-- `days from chemo start to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.   -->
+<!-- We have a list of `r length(unique(chemo_patients$deidentified_patient_id))` unique patients. -->
+
+<!-- <br> -->
+
+<!-- ## 5.List chemotherapy drugs (first regimen)  -->
+
+<!-- ```{r} -->
+<!-- chemo_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(chemotherapy_drug_1, mrn) %>%  -->
+<!--   tbl_summary(sort = list(everything() ~ "frequency")) -->
+<!-- ``` -->
+
+<!-- ## 6.Patients list -->
+<!-- ```{r} -->
+<!-- chemo_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(deidentified_patient_id, age_at_diagnosis) -->
+
+<!-- chemo_patients %>% -->
+<!--   select(deidentified_patient_id, -->
+<!--          presample_id_chemo, -->
+<!--          presample_date_chemo, -->
+<!--          seqsample_id_chemo, -->
+<!--          seqsample_date_chemo, -->
+<!--          seqsample_before_2nd_regimen, -->
+<!--          chemo_stop_T2, time_chemo_seqsample, -->
+<!--          parp_start_date, chemotherapy_end_date1_1, -->
+<!--          chemotherapy_drug_1) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(everything(), .direction = "updown") %>% -->
+<!--   distinct() %>% -->
+<!--   kbl() %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% -->
+<!--   scroll_box(width = "100%") -->
+
+<!-- # chem <- chemo_patients %>% -->
+<!-- #   filter(!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo)) %>% -->
+<!-- #   select(mrn, deidentified_patient_id, -->
+<!-- #          presample_id_chemo, -->
+<!-- #          presample_date_chemo, -->
+<!-- #          interval_presample_chemo, -->
+<!-- #          seqsample_id_chemo, -->
+<!-- #          seqsample_date_chemo, -->
+<!-- #          time_chemo_seqsample, -->
+<!-- #          parp_start_date, chemotherapy_end_date1_1, -->
+<!-- #          chemotherapy_drug_1) %>% -->
+<!-- #   group_by(deidentified_patient_id) %>% -->
+<!-- #   fill(everything(), .direction = "updown") %>% -->
+<!-- #   distinct() -->
+<!-- # write_csv(chem, "Samples list chemotherapy group in breast patients 03112022.csv") -->
+<!-- ``` -->
+
+<!-- # IV. Radiation group -->
+<!-- ```{r} -->
+<!-- rad_patients <- blood_patients2 %>%  -->
+<!--   # filter(!is.na(seqsample_id_rad)) %>%  -->
+<!--   filter(!is.na(have_good_seqsample_rad) &  -->
+<!--            (!is.na(presample_id_rad) | !is.na(seqsample_id_rad))) -->
+
+<!-- table(rad_patients$presample_already_sequenced) -->
+<!-- print("breast_study_007422 breast_study_007422_pre_radiation 06S18030282 is already sequenced") -->
+<!-- # rad_patients <- blood_patients2 %>% -->
+<!-- #   filter( -->
+<!-- #     str_detect( -->
+<!-- #       deidentified_patient_id,  -->
+<!-- #       paste0(rad_patients$deidentified_patient_id, collapse = "|"))) -->
+<!-- ``` -->
+
+<!-- ## 1.Samples before treatment -->
+<!-- ```{r} -->
+<!-- sample_before_rad <- rad_patients %>%  -->
+<!--   filter(!is.na(interval_presample_rad)) %>% -->
+<!--   arrange(deidentified_patient_id, interval_presample_rad) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) -->
+
+<!-- sample_before_rad %>% -->
+<!--   ggplot(aes(x =interval_presample_rad -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") + -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Blood Collection T1 to Radiation (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 7 days", -->
+<!--        title = "Patients who had a sequential sample after Radiation") -->
+<!-- ``` -->
+
+<!-- ## 2.Samples after treatments -->
+<!-- ```{r} -->
+<!-- sample_after_rad <- rad_patients %>%  -->
+<!--   filter(!is.na(time_rad_seqsample)) %>% -->
+<!--   arrange(deidentified_patient_id, time_rad_seqsample) %>% -->
+<!--   distinct(deidentified_patient_id, specimen_collection_dt, .keep_all = TRUE) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% -->
+<!--   ungroup() -->
+
+<!-- sample_after_rad %>% -->
+<!--   ggplot(aes(x =time_rad_seqsample, fill = sequential_sample_count))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Radiation start to \nT2 Sequential Blood Collection (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 100 days", -->
+<!--        title = "Patients who had a sequential sample after Radiation") -->
+
+<!-- rad_patients %>% -->
+<!--   filter(!is.na(seqsample_date_rad)) %>% -->
+<!--   mutate(rad_stop_T2 = interval(start = radiation_start_date_1, end = seqsample_date_rad)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(rad_stop_T2) %>%  -->
+<!--   tbl_summary() -->
+
+<!-- ``` -->
+
+<!-- ## 4.Time between T1 and T2 -->
+<!-- ```{r} -->
+<!-- rad_patients %>%  -->
+<!--   filter(!is.na(time_rad_seqsample)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x =interval_prepost_sample_rad -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 30, fill= "darkblue") + -->
+<!--   xlim(0, 400)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Pre Sample to \nPost Sample / Radiation (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 30 days") -->
+<!-- ``` -->
+<!-- I coded a de-identified ID for each patient, I used strips to visualize them better.   -->
+<!-- This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient. -->
+
+
+<!-- ```{r} -->
+<!-- rad_patients <- rad_patients %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   mutate(ID = dense_rank(deidentified_patient_id)) -->
+
+<!-- df <- rad_patients %>% -->
+<!--   select(deidentified_patient_id, ID, -->
+<!--          "number post treatment sample"  = sequential_sample_count,  -->
+<!--          "days from pre sample to radiation" = interval_presample_rad, -->
+<!--          "days from radiation to sequential sample" =  time_rad_seqsample) -->
+
+<!-- color.me1 <- which((df$ID %% 2)  == 1) -->
+<!-- # color.me <- which(df$`number post treatment sample` == 2) -->
+<!-- # color.me.bold <- which((df$ID %% 2)  == 1) -->
+<!-- color.me.pre <- which(df$`number post treatment sample` == 1) -->
+<!-- color.me.seq1 <- which(df$`number post treatment sample` == 2) -->
+
+
+<!-- df %>% select(-ID) %>%  -->
+<!--   kable(booktabs = T, align = "ccl") %>% -->
+<!--   # kable_styling(latex_options = "striped", stripe_color = "red") #%>% -->
+<!--   # row_spec(color.me, background = "#eee") %>% -->
+<!--   row_spec(color.me1, background = "#eee") %>% -->
+<!--   row_spec(color.me.pre, color = "blue") %>% -->
+<!--   row_spec(color.me.seq1, color = "red") -->
+
+<!-- df1 <- df %>% filter(!is.na(`days from pre sample to radiation`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from pre sample to radiation`),2), -->
+<!--             median = round(median(`days from pre sample to radiation`),2)) -->
+
+<!-- df <- df %>% filter(!is.na(`days from radiation to sequential sample`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from radiation to sequential sample`),2), -->
+<!--             median = round(median(`days from radiation to sequential sample`),2)) -->
+<!-- ``` -->
+<!-- `days from pre sample to radiation` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.   -->
+<!-- `days from radiation to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.   -->
+<!-- We have a list of `r length(unique(rad_patients$deidentified_patient_id))` unique patients. -->
+
+<!-- <br> -->
+
+<!-- ## 5.Patients list -->
+<!-- ```{r} -->
+<!-- rad_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(deidentified_patient_id, age_at_diagnosis) -->
+
+<!-- rad_patients %>% -->
+<!--   select(deidentified_patient_id, -->
+<!--          presample_id_rad, -->
+<!--          presample_date_rad, -->
+<!--          seqsample_id_rad, -->
+<!--          seqsample_date_rad, -->
+<!--          time_rad_seqsample, -->
+<!--          radiation_start_date_1) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(everything(), .direction = "updown") %>% -->
+<!--   distinct() %>% -->
+<!--   kbl() %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% -->
+<!--   scroll_box(width = "100%") -->
+
+<!-- # rad <- rad_patients %>% -->
+<!-- #   filter(!is.na(presample_id_rad) | !is.na(seqsample_id_rad)) %>% -->
+<!-- #   select(mrn, deidentified_patient_id, -->
+<!-- #          presample_id_rad, -->
+<!-- #          presample_date_rad, -->
+<!-- #          interval_presample_rad, -->
+<!-- #          seqsample_id_rad, -->
+<!-- #          seqsample_date_rad, -->
+<!-- #          time_rad_seqsample, -->
+<!-- #          radiation_start_date_1) %>% -->
+<!-- #   group_by(deidentified_patient_id) %>% -->
+<!-- #   fill(everything(), .direction = "updown") %>% -->
+<!-- #   distinct() -->
+<!-- #  -->
+<!-- # write_csv(rad, "Samples list radiotherapy group in breast patients 03112022.csv") -->
+<!-- ``` -->
+<!-- <br> -->
+<!-- <br> -->
+
+<!-- # V. Chemo then Radiation group -->
+<!-- ```{r} -->
+<!-- chemorad_patients <- blood_patients2 %>%  -->
+<!--   filter(!is.na(seqsample_id_Achemorad)) -->
+
+<!-- table(chemorad_patients$presample_already_sequenced) -->
+<!-- print("0 is already sequenced") -->
+
+<!-- chemorad_patients <- blood_patients2 %>% -->
+<!--   filter( -->
+<!--     str_detect( -->
+<!--       deidentified_patient_id, -->
+<!--       paste0(chemorad_patients$deidentified_patient_id, collapse = "|"))) -->
+<!-- ``` -->
+
+<!-- ## 1.Samples before treatment -->
+<!-- ```{r} -->
+<!-- sample_before_chemo <- chemorad_patients %>%  -->
+<!--   filter(!is.na(interval_presample_chemo_rad)) %>% -->
+<!--   arrange(deidentified_patient_id, interval_presample_chemo_rad) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) -->
+
+
+<!-- sample_before_chemo %>% -->
+<!--   ggplot(aes(x =interval_presample_chemo_rad -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") + -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Blood Collection T1 to Chemotherapy (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 7 days", -->
+<!--        title = "Patients who had a sequential sample between and after Chemotherapy and Radiation") -->
+<!-- ``` -->
+
+<!-- ## 2.Samples between treatments -->
+<!-- ```{r} -->
+<!-- sample_Achemo_Brad <- chemorad_patients %>% -->
+<!--   filter(seq_sample_Achemo_Brad == "Yes") %>% -->
+<!--   arrange(deidentified_patient_id, time_chemo_1st_seqsample) %>% -->
+<!--   distinct(deidentified_patient_id, specimen_collection_dt, .keep_all = TRUE) %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   select(deidentified_patient_id, sequential_sample_count, time_chemo_1st_seqsample) -->
+
+<!-- sample_Achemo_Brad %>%  -->
+<!--   ggplot(aes(x =time_chemo_1st_seqsample, fill = sequential_sample_count))+ -->
+<!--   geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") + -->
+<!--   scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Chemotherapy start to \n2nd Sequential Sample T2 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients who had a sequential sample between and after Chemotherapy and Radiation", -->
+<!--        caption = "Each bar on the top plot represents 30 days") -->
+<!-- ``` -->
+
+<!-- ## 3.Samples after treatments -->
+<!-- ## 3-1.Time between chemotherapy stop date and T2 -->
+<!-- ```{r} -->
+<!-- chemorad_patients %>% -->
+<!--   filter(!is.na(seqsample_date_Achemo)) %>% -->
+<!--   mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_Achemo)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x= chemo_stop_T2))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   # scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Chemotherapy stop date to T2 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients with sequential samples after Chemotherapy", -->
+<!--        caption = "Each bar represents 100 days") -->
+
+<!-- chemorad_patients %>% -->
+<!--   filter(!is.na(seqsample_date_Achemo)) %>% -->
+<!--   mutate(chemo_stop_T2 = interval(start = chemotherapy_end_date1_1, end = seqsample_date_Achemo)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(chemo_stop_T2) %>%  -->
+<!--   tbl_summary(type = list(chemo_stop_T2 ~ "continuous")) -->
+<!-- ``` -->
+
+<!-- ## 3-2.Time from Radiotherapy to T3 -->
+<!-- ```{r} -->
+<!-- sample_Achemo_Arad <- chemorad_patients %>% -->
+<!--   filter(!is.na(time_rad_2nd_seqsample)) %>% -->
+<!--   arrange(deidentified_patient_id, time_rad_2nd_seqsample) %>% -->
+<!--   distinct(deidentified_patient_id, specimen_collection_dt, .keep_all = TRUE) %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   select(deidentified_patient_id, sequential_sample_count, time_rad_2nd_seqsample) -->
+
+<!-- sample_Achemo_Arad %>%  -->
+<!--   ggplot(aes(x =time_rad_2nd_seqsample, fill = sequential_sample_count))+ -->
+<!--   geom_histogram(binwidth = 30, alpha = 0.9, position = "stack") + -->
+<!--   scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Radiotherapy to \n3rd Sequential Sample T3 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients who had a sequential sample between and after Chemotherapy and Radiation", -->
+<!--        caption = "Each bar represents 30 days") -->
+<!-- ``` -->
+
+<!-- ## 4.Time between T2 and T3 -->
+<!-- ```{r} -->
+<!-- chemorad_patients %>%  -->
+<!--   filter(!is.na(interval_prepost_sample_chemo_rad)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x =interval_prepost_sample_chemo_rad -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 30, fill= "darkblue") + -->
+<!--   xlim(0, 400)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from T2 to \nT3 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 30 days") -->
+<!-- ``` -->
+<!-- ## Time between Chemo and radiation for patients who had both sequential samples -->
+<!-- ```{r} -->
+<!-- chemorad_patients %>% -->
+<!--   filter(!is.na(seqsample_id_Achemorad)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x =interval_chemo_rad))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   # scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Chemotherapy to Radiotherapy (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients with sequential samples after Chemotherapy and Radiotherapy", -->
+<!--        caption = "Each bar represents 100 days") -->
+<!-- ``` -->
+
+
+
+<!-- I coded a de-identified ID for each patient, I used strips to visualize them better.   -->
+<!-- This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient. -->
+<!-- ```{r} -->
+<!-- chemorad_patients <- chemorad_patients %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   mutate(ID = dense_rank(deidentified_patient_id)) -->
+
+<!-- df <- chemorad_patients %>% -->
+<!--   select(deidentified_patient_id, ID, -->
+<!--          "number post treatment sample"  = sequential_sample_count,  -->
+<!--          "days from pre sample to chemo start" = interval_presample_chemo_rad, -->
+<!--          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample, -->
+<!--          "days from sequential sample (T2) to radiation" = time_1st_seqsample_rad, -->
+<!--          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample, -->
+<!--          "days between T2 and T3"  = interval_prepost_sample_chemo_rad) -->
+
+<!-- color.me1 <- which((df$ID %% 2)  == 1) -->
+<!-- # color.me <- which(df$`number post treatment sample` == 2) -->
+<!-- # color.me.bold <- which((df$ID %% 2)  == 1) -->
+<!-- color.me.pre <- which(df$`number post treatment sample` == 1) -->
+<!-- color.me.seq1 <- which(df$`number post treatment sample` == 2) -->
+<!-- color.me.seq2 <- which(!is.na(df$`days from radiation to sequential sample (T3)`)) -->
+
+
+<!-- df %>% select(-ID) %>%  -->
+<!--   kable(booktabs = T, align = "ccl") %>% -->
+<!--   # kable_styling(latex_options = "striped", stripe_color = "red") #%>% -->
+<!--   # row_spec(color.me, background = "#eee") %>% -->
+<!--   row_spec(color.me1, background = "#eee") %>% -->
+<!--   row_spec(color.me.pre, color = "blue") %>% -->
+<!--   row_spec(color.me.seq1, color = "red") %>% -->
+<!--   row_spec(color.me.seq2, color = "green") -->
+
+<!-- df1 <- df %>% filter(!is.na(`days from pre sample to chemo start`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from pre sample to chemo start`),2), -->
+<!--             median = round(median(`days from pre sample to chemo start`),2)) -->
+
+<!-- df2 <- df %>% filter(!is.na(`days from chemo start to sequential sample (T2)`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from chemo start to sequential sample (T2)`),2), -->
+<!--             median = round(median(`days from chemo start to sequential sample (T2)`),2)) -->
+
+<!-- df <- df %>% filter(!is.na(`days from radiation to sequential sample (T3)`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from radiation to sequential sample (T3)`),2), -->
+<!--             median = round(median(`days from radiation to sequential sample (T3)`),2)) -->
+<!-- ``` -->
+<!-- `days from pre sample to chemo start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.   -->
+<!-- `days from chemo start to sequential sample (T2)` has a mean equal to `r df2$mean` and a median equal to `r df2$median`.   -->
+<!-- `days from radiation to sequential sample (T3)` has a mean equal to `r df$mean` and a median equal to `r df$median`.   -->
+<!-- We have a list of `r length(unique(chemorad_patients$deidentified_patient_id))` unique patients. -->
+
+<!-- <br> -->
+
+<!-- ## 5.List chemotherapy drugs (first regimen)  -->
+
+<!-- ```{r} -->
+<!-- chemorad_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(chemotherapy_drug_1) %>%  -->
+<!--   tbl_summary(sort = list(everything() ~ "frequency")) -->
+
+<!-- chemorad_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   filter(chemotherapy_drug_1 == "adriamycin; cyclophosphamide; paclitaxel") %>%  -->
+<!--   select(chemotherapy_drug_1, line_gap_1) -->
+<!-- ``` -->
+
+<!-- ## 6.Patients list -->
+<!-- ```{r} -->
+<!-- chemorad_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(deidentified_patient_id, age_at_diagnosis) -->
+
+<!-- chemorad_patients %>% -->
+<!--   select(deidentified_patient_id, -->
+<!--          presample_id_chemorad, -->
+<!--          presample_date_chemorad, -->
+<!--          seqsample_id_Achemo, -->
+<!--          seqsample_date_Achemo, -->
+<!--          seqsample_id_Achemorad, -->
+<!--          seqsample_date_Achemorad, -->
+<!--          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample, -->
+<!--          parp_start_date, chemotherapy_end_date1_1, -->
+<!--          chemotherapy_drug_1, radiation_start_date_1) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(everything(), .direction = "updown") %>% -->
+<!--   distinct() %>% -->
+<!--   kbl() %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% -->
+<!--   scroll_box(width = "100%") -->
+
+<!-- chrad <- chemorad_patients %>% -->
+<!--   filter(!is.na(presample_id_chemorad) | !is.na(seqsample_id_Achemo) | !is.na(seqsample_id_Achemorad)) %>% -->
+<!--   select(mrn, deidentified_patient_id, -->
+<!--          presample_id_chemorad, -->
+<!--          presample_date_chemorad, -->
+<!--          interval_presample_chemo_rad, -->
+<!--          seqsample_id_Achemo, -->
+<!--          seqsample_date_Achemo, -->
+<!--          "days from chemo start to sequential sample (T2)"  = time_chemo_1st_seqsample, -->
+<!--          seqsample_id_Achemorad, -->
+<!--          seqsample_date_Achemorad, -->
+<!--          "days from radiation to sequential sample (T3)" =  time_rad_2nd_seqsample, -->
+<!--          parp_start_date, chemotherapy_end_date1_1, -->
+<!--          chemotherapy_drug_1, radiation_start_date_1) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(everything(), .direction = "updown") %>% -->
+<!--   distinct() -->
+
+<!-- write_csv(chrad, "Samples list chemotherapy then radiotherapy group in breast patients 03112022.csv") -->
+<!-- ``` -->
+<!-- <br> -->
+<!-- <br> -->
+
+
+
+<!-- # VI. Hormone group -->
+<!-- ```{r} -->
+<!-- hormone_patients <- blood_patients2 %>%  -->
+<!--   filter(!is.na(have_good_seqsample_hormone) &  -->
+<!--            (!is.na(presample_id_hormone) | !is.na(seqsample_id_hormone))) -->
+
+<!-- table(hormone_patients$presample_patient_already_sequenced) -->
+<!-- print("3 patients have already a pre-sample sequenced") -->
+<!-- # hormone_patients <- blood_patients2 %>% -->
+<!-- #   filter( -->
+<!-- #     str_detect( -->
+<!-- #       deidentified_patient_id,  -->
+<!-- #       paste0(hormone_patients$deidentified_patient_id, collapse = "|"))) -->
+<!-- ``` -->
+
+<!-- ## 1.Samples before treatment -->
+<!-- ```{r} -->
+<!-- sample_before_hormone <- hormone_patients %>%  -->
+<!--   filter(!is.na(interval_presample_hormone)) %>% -->
+<!--   arrange(deidentified_patient_id, interval_presample_hormone) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) -->
+
+<!-- sample_before_hormone %>% -->
+<!--   ggplot(aes(x =interval_presample_hormone -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 7, alpha = 0.9, position = "stack", fill= "purple") + -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Blood Collection T1 to hormonetherapy (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 7 days", -->
+<!--        title = "Patients who had a sequential sample after hormonetherapy") -->
+<!-- ``` -->
+
+<!-- ## 2.Samples after treatments -->
+<!-- ```{r} -->
+<!-- sample_after_hormone <- hormone_patients %>%  -->
+<!--   filter(!is.na(time_hormone_seqsample)) %>% -->
+<!--   arrange(deidentified_patient_id, time_hormone_seqsample) %>% -->
+<!--   distinct(deidentified_patient_id, specimen_collection_dt, .keep_all = TRUE) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>% -->
+<!--   ungroup() -->
+
+<!-- sample_after_hormone %>% -->
+<!--   ggplot(aes(x =time_hormone_seqsample, fill = sequential_sample_count))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from hormonetherapy start to \nT2 Sequential Blood Collection (in days)", -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 100 days", -->
+<!--        title = "Patients who had a sequential sample after hormonetherapy") -->
+<!-- ``` -->
+
+<!-- ## 3.Time between hormonetherapy stop date and T2 -->
+
+<!-- ```{r} -->
+<!-- hormone_patients %>% -->
+<!--   filter(!is.na(seqsample_date_hormone)) %>% -->
+<!--   mutate(hormone_stop_T2 = interval(start = hormone_therapy_end_date1_1, end = seqsample_date_hormone)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x= hormone_stop_T2))+ -->
+<!--   geom_histogram(binwidth = 100, alpha = 0.9, position = "stack") + -->
+<!--   # scale_fill_viridis(discrete=T)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from hormonetherapy stop date to T2 (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        title = "Patients with sequential samples after hormonetherapy", -->
+<!--        caption = "Each bar represents 100 days") -->
+
+<!-- hormone_patients %>% -->
+<!--   filter(!is.na(seqsample_date_hormone)) %>% -->
+<!--   mutate(hormone_stop_T2 = interval(start = hormone_therapy_end_date1_1, end = seqsample_date_hormone)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(hormone_stop_T2) %>%  -->
+<!--   tbl_summary() -->
+<!-- ``` -->
+
+<!-- ## 4.Time between T1 and T2 -->
+<!-- ```{r} -->
+<!-- hormone_patients %>%  -->
+<!--   filter(!is.na(time_hormone_seqsample)) %>% -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   ggplot(aes(x =interval_prepost_sample_hormone -->
+<!--              ))+ -->
+<!--   geom_histogram(binwidth = 30, fill= "darkblue") + -->
+<!--   xlim(0, 400)+ -->
+<!--   theme_minimal(base_size = 14) + -->
+<!--   labs(x="Time from Pre Sample to \nPost Sample / hormonetherapy (in days)",  -->
+<!--        y="Number of Patient", -->
+<!--        caption = "Each bar represents 30 days") -->
+<!-- ``` -->
+<!-- I coded a de-identified ID for each patient, I used strips to visualize them better.   -->
+<!-- This table only shows the samples after treatment and highlighted in <span style="color:red">red</span> is the first sample after treatment for each patient. -->
+
+
+<!-- ```{r} -->
+<!-- hormone_patients <- hormone_patients %>%  -->
+<!--   group_by(deidentified_patient_id) %>%  -->
+<!--   mutate(sequential_sample_count = factor(row_number(deidentified_patient_id))) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   mutate(hormone_stop_T2 = interval(start = hormone_therapy_end_date1_1, end = seqsample_date_hormone)/ -->
+<!--              duration(n=1, units = "days")) %>%  -->
+<!--   mutate(ID = dense_rank(deidentified_patient_id)) -->
+
+<!-- df <- hormone_patients %>% -->
+<!--   select(deidentified_patient_id, ID, -->
+<!--          "number post treatment sample"  = sequential_sample_count,  -->
+<!--          "days from pre sample to hormone start" = interval_presample_hormone, -->
+<!--          hormone_stop_T2, -->
+<!--          seqsample_before_2nd_regimen, -->
+<!--          "days from hormone start to sequential sample" =  time_hormone_seqsample) -->
+
+<!-- color.me1 <- which((df$ID %% 2)  == 1) -->
+<!-- # color.me <- which(df$`number post treatment sample` == 2) -->
+<!-- # color.me.bold <- which((df$ID %% 2)  == 1) -->
+<!-- color.me.pre <- which(df$`number post treatment sample` == 1) -->
+<!-- color.me.seq1 <- which(df$`number post treatment sample` == 2) -->
+
+
+<!-- df %>% select(-ID) %>%  -->
+<!--   kable(booktabs = T, align = "ccl") %>% -->
+<!--   # kable_styling(latex_options = "striped", stripe_color = "red") #%>% -->
+<!--   # row_spec(color.me, background = "#eee") %>% -->
+<!--   row_spec(color.me1, background = "#eee") %>% -->
+<!--   row_spec(color.me.pre, color = "blue") %>% -->
+<!--   row_spec(color.me.seq1, color = "red") -->
+
+<!-- df1 <- df %>% filter(!is.na(`days from pre sample to hormone start`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from pre sample to hormone start`),2), -->
+<!--             median = round(median(`days from pre sample to hormone start`),2)) -->
+
+<!-- df <- df %>% filter(!is.na(`days from hormone start to sequential sample`)) %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   summarize(mean = round(mean(`days from hormone start to sequential sample`),2), -->
+<!--             median = round(median(`days from hormone start to sequential sample`),2)) -->
+<!-- ``` -->
+<!-- `days from pre sample to hormone start` has a mean equal to `r df1$mean` and a median equal to `r df1$median`.   -->
+<!-- `days from hormone start to sequential sample` has a mean equal to `r df$mean` and a median equal to `r df$median`.   -->
+<!-- We have a list of `r length(unique(hormone_patients$deidentified_patient_id))` unique patients. -->
+
+<!-- <br> -->
+
+<!-- ## 5.List hormonetherapy drugs (first regimen)  -->
+
+<!-- ```{r} -->
+<!-- hormone_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(hormone_therapy_drug_1, mrn) %>%  -->
+<!--   tbl_summary(sort = list(everything() ~ "frequency")) -->
+<!-- ``` -->
+
+<!-- ## 6.Patients list -->
+<!-- ```{r} -->
+<!-- hormone_patients %>%  -->
+<!--   distinct(deidentified_patient_id, .keep_all = TRUE) %>%  -->
+<!--   select(deidentified_patient_id, age_at_diagnosis) -->
+
+<!-- hormone_patients %>% -->
+<!--   select(deidentified_patient_id, -->
+<!--          presample_id_hormone, -->
+<!--          presample_date_hormone, -->
+<!--          seqsample_id_hormone, -->
+<!--          seqsample_date_hormone, -->
+<!--          seqsample_before_2nd_regimen, -->
+<!--          hormone_stop_T2, time_hormone_seqsample, -->
+<!--          hormone_therapy_start_date_1, hormone_therapy_end_date1_1, -->
+<!--          hormone_therapy_drug_1) %>% -->
+<!--   group_by(deidentified_patient_id) %>% -->
+<!--   fill(everything(), .direction = "updown") %>% -->
+<!--   distinct() %>% -->
+<!--   kbl() %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% -->
+<!--   scroll_box(width = "100%") -->
+
+<!-- # chem <- hormone_patients %>% -->
+<!-- #   filter(!is.na(presample_id_chemo) | !is.na(seqsample_id_chemo)) %>% -->
+<!-- #   select(mrn, deidentified_patient_id, -->
+<!-- #          presample_id_chemo, -->
+<!-- #          presample_date_chemo, -->
+<!-- #          interval_presample_chemo, -->
+<!-- #          seqsample_id_chemo, -->
+<!-- #          seqsample_date_chemo, -->
+<!-- #          time_chemo_seqsample, -->
+<!-- #          parp_start_date, chemotherapy_end_date1_1, -->
+<!-- #          chemotherapy_drug_1) %>% -->
+<!-- #   group_by(deidentified_patient_id) %>% -->
+<!-- #   fill(everything(), .direction = "updown") %>% -->
+<!-- #   distinct() -->
+<!-- # write_csv(chem, "Samples list chemotherapy group in breast patients 03112022.csv") -->
+<!-- ``` -->
