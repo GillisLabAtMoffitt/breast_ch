@@ -140,6 +140,15 @@ rm(breast_marker_1, breast_marker_2)
 
 
 # Cancer Characteristics----
+second_cancer <- breast_info %>%
+  filter(!str_detect(primary_site_group_desc, "BREAST")) %>%
+  arrange(patient_id, dx_dt) %>% 
+  select(patient_id, primary_site_group_desc) #%>% 
+  # group_by(patient_id) %>%
+  # summarise_at(vars(primary_site_group_desc), 
+  #              str_c, collapse = "; ")
+# write_csv(second_cancer, "list of second cancer.csv")
+
 breast_info <- breast_info %>%
   select(-c(birth_dt : race_cr_src_desc_1, 
             suspense_desc)) %>% 

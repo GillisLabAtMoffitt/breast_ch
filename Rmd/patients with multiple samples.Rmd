@@ -1,0 +1,255 @@
+---
+title: "Patients with multiple samples"
+author: "Christelle Colin-Leitzinger"
+date: '`r Sys.Date()`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+
+.figure {
+    margin-top: 100px;
+    margin-bottom: 100px;
+}
+
+table {
+    margin-top: 10px;
+    margin-bottom: 25px !important;
+}
+
+th, td { padding: 5px; }
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library}
+library(tidyverse)
+library(lubridate)
+library(gtsummary)
+library(viridis)
+theme_set(theme_classic())
+theme_gtsummary_compact()
+```
+
+```{r}
+# blood_patients <- 
+#   read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients.rds")
+blood_patients2 <- read_rds(paste0(here::here(), "/blood_patients2.rds"))
+```
+
+# All breast cancers with blood sample
+```{r}
+blood_patients2 %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  ggplot(aes(x =time_from_first_sample_to_any_next_sample))+
+  geom_histogram(binwidth = 1, fill= "darkblue") +
+  # xlim(0, 400)+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")
+```
+
+
+```{r, fig.height= 6}
+blood_patients2 %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  
+  ggplot(aes(x = time_from_first_sample_to_any_next_sample, fill = as.factor(sample_seq_number)))+
+  geom_histogram(binwidth = 1, position = "stack") +
+  # xlim(0, 400)+
+  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")+
+  theme(legend.position = "bottom")
+
+blood_patients2 %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  
+  ggplot(aes(x = time_from_first_sample_to_any_next_sample, fill = as.factor(sample_seq_number)))+
+  geom_histogram(binwidth = 1, position = "stack") +
+  coord_cartesian(ylim = c(0, 40))+
+  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")+
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+a <- blood_patients2 %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "days"), .after = date_of_first_sample)
+a %>%   
+  select(time_from_first_sample_to_any_next_sample, sample_seq_number) %>% 
+  tbl_summary(statistic =list(all_continuous() ~ "{mean} ({min}, {max})")) %>% 
+  modify_caption("**Patients** (N = {a %>% distinct(deidentified_patient_id) %>% nrow()})")
+```
+
+# With subsequent myeloid malignancies
+```{r list of subsequent cancer}
+# b <- breast_info %>%
+#   filter(primary_site_group_desc != "BREAST") %>%
+#   select(patient_id, histology_cd, histology_desc, primary_site_cd, primary_site_group_desc) %>%
+#   arrange(primary_site_group_desc, histology_desc) %>% 
+#   left_join(., Demographic %>% select(patient_id, mrn))
+# write_csv(b, "patient subsequent cancer after breast cancer - hossein.csv")
+subsequent_cancer <- 
+  read_csv("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/patient subsequent cancer after breast cancer - hossein.csv")
+subsequent_cancer_of_interest <- 
+  readxl::read_xlsx("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/Subsequent cancers after breast_02.05.24.xlsx",
+                    sheet = "Myeloid malignancies", col_names = FALSE) %>% 
+  `colnames<-`("histology_desc")
+subsequent_cancer <- subsequent_cancer %>% 
+  inner_join(., subsequent_cancer_of_interest) %>% 
+  select(mrn, histology_desc)
+
+blood_patients2_subset <- blood_patients2 %>% 
+  filter(mrn %in% c(subsequent_cancer$mrn))
+```
+
+None of these patients have sequential samples which would have fit the first criteria we had. So it is highly possible they were never sequenced.
+```{r}
+blood_patients2_subset %>% 
+  select(mrn, had_chemo, had_rad, had_hormone, had_immuno,
+         presample_id_chemo, seqsample_id_chemo,
+         presample_id_rad, seqsample_id_rad,
+         presample_id_chemorad,
+         seqsample_id_Achemo,
+         seqsample_id_Achemorad,
+         presample_id_hormone,
+         seqsample_id_hormone) %>% 
+  arrange(had_chemo, presample_id_chemo)
+```
+
+```{r}
+blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  ggplot(aes(x =time_from_first_sample_to_any_next_sample))+
+  geom_histogram(binwidth = 1, fill= "darkblue") +
+  # xlim(0, 400)+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")
+```
+
+
+```{r, fig.height= 6}
+blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  
+  ggplot(aes(x = time_from_first_sample_to_any_next_sample, fill = as.factor(sample_seq_number)))+
+  geom_histogram(binwidth = 1, position = "stack") +
+  # xlim(0, 400)+
+  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")+
+  theme(legend.position = "bottom")
+
+blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
+  
+  ggplot(aes(x = time_from_first_sample_to_any_next_sample, fill = as.factor(sample_seq_number)))+
+  geom_histogram(binwidth = 1, position = "stack") +
+  coord_cartesian(ylim = c(0, 40))+
+  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")+
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+a <- blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  filter(sample_seq_number != 1) %>% 
+  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
+           duration(n = 1, unit = "days"), .after = date_of_first_sample)
+a %>%   
+  select(time_from_first_sample_to_any_next_sample, sample_seq_number) %>% 
+  tbl_summary(statistic =list(all_continuous() ~ "{mean} ({min}, {max})")) %>% 
+  modify_caption("**Patients** (N = {a %>% distinct(deidentified_patient_id) %>% nrow()})")
+```
+
+
+
+
+
+
+
+
+
+
+
