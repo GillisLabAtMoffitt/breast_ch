@@ -140,10 +140,17 @@ rm(breast_marker_1, breast_marker_2)
 
 
 # Cancer Characteristics----
-second_cancer <- breast_info %>%
-  filter(!str_detect(primary_site_group_desc, "BREAST")) %>%
-  arrange(patient_id, dx_dt) %>% 
-  select(patient_id, primary_site_group_desc) #%>% 
+# b <- breast_info %>%
+#   filter(primary_site_group_desc != "BREAST") %>%
+#   select(patient_id, dx_dt, histology_cd, histology_desc, primary_site_cd, primary_site_group_desc) %>%
+#   arrange(primary_site_group_desc, histology_desc) %>%
+#   left_join(., Demographic %>% select(patient_id, mrn))
+# write_csv(b, "patient subsequent cancer after breast cancer - hossein.csv")
+
+# second_cancer <- breast_info %>%
+#   filter(!str_detect(primary_site_group_desc, "BREAST")) %>%
+#   arrange(patient_id, dx_dt) %>% 
+#   select(patient_id, primary_site_group_desc) #%>% 
   # group_by(patient_id) %>%
   # summarise_at(vars(primary_site_group_desc), 
   #              str_c, collapse = "; ")

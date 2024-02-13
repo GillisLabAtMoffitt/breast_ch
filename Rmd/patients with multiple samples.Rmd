@@ -146,11 +146,31 @@ subsequent_cancer_of_interest <-
                     sheet = "Myeloid malignancies", col_names = FALSE) %>% 
   `colnames<-`("histology_desc")
 subsequent_cancer <- subsequent_cancer %>% 
-  inner_join(., subsequent_cancer_of_interest) %>% 
-  select(mrn, histology_desc)
+  inner_join(., subsequent_cancer_of_interest,
+             by = "histology_desc") %>% 
+  select(mrn, histology_desc, dx_dt) %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  group_by(mrn) %>% 
+  summarise_at(vars(histology_desc, dx_dt), 
+               str_c, collapse = "; ") %>% 
+  ungroup() %>% 
+  mutate(dx_count = sapply(strsplit(dx_dt, "; "), length)) %>% 
+  
+  separate_wider_delim(dx_dt, 
+                       delim = "; ", 
+                       names = c(paste("date_of_myeloid", 1:max(.$dx_count), sep = "")), 
+                       too_few = "align_start", too_many = "drop", 
+                       cols_remove = TRUE) %>% 
+  separate_wider_delim(histology_desc, 
+                       delim = "; ", 
+                       names = c(paste("histology_desc", 1:max(.$dx_count), sep = "")), 
+                       too_few = "align_start", too_many = "drop", 
+                       cols_remove = TRUE)
 
 blood_patients2_subset <- blood_patients2 %>% 
-  filter(mrn %in% c(subsequent_cancer$mrn))
+  filter(mrn %in% c(subsequent_cancer$mrn)) %>% 
+  inner_join(subsequent_cancer, .,
+             by = "mrn")
 ```
 
 None of these patients have sequential samples which would have fit the first criteria we had. So it is highly possible they were never sequenced.
@@ -205,25 +225,6 @@ blood_patients2_subset %>%
        y="Number of Patient",
        caption = "Each bar represents 1 year")+
   theme(legend.position = "bottom")
-
-blood_patients2_subset %>% 
-  arrange(deidentified_patient_id, specimen_collection_date) %>% 
-  group_by(deidentified_patient_id) %>% 
-  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
-  mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
-  ungroup() %>% 
-  filter(sample_seq_number != 1) %>% 
-  mutate(time_from_first_sample_to_any_next_sample = interval(start = date_of_first_sample, end = specimen_collection_date) /
-           duration(n = 1, unit = "years"), .after = date_of_first_sample) %>% 
-  
-  ggplot(aes(x = time_from_first_sample_to_any_next_sample, fill = as.factor(sample_seq_number)))+
-  geom_histogram(binwidth = 1, position = "stack") +
-  coord_cartesian(ylim = c(0, 40))+
-  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
-  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
-       y="Number of Patient",
-       caption = "Each bar represents 1 year")+
-  theme(legend.position = "bottom")
 ```
 
 
@@ -243,7 +244,96 @@ a %>%
   modify_caption("**Patients** (N = {a %>% distinct(deidentified_patient_id) %>% nrow()})")
 ```
 
+Time from samples to myeloid malignancy
+```{r}
+blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date) %>% 
+  # mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  # filter(sample_seq_number == 1) %>% 
+  
+  mutate(time_from_malignancy_to_sample_myeloid = interval(start = date_of_myeloid1, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = sample_seq_number) %>% 
+  
+  ggplot(aes(x = time_from_malignancy_to_sample_myeloid, fill = as.factor(sample_seq_number)))+
+  geom_histogram(binwidth = 1, position = "stack") +
+  # xlim(0, 400)+
+  scale_fill_viridis(discrete=T, name = "Time between the 1st and ... sample")+
+  labs(x="Time from First Sample to \nAny Following Sample (in years)", 
+       y="Number of Patient",
+       caption = "Each bar represents 1 year")+
+  theme(legend.position = "bottom")
+```
 
+
+```{r, fig.height=11, fig.width=12}
+blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date,
+         sample_seq_number = factor(sample_seq_number, levels = c("3", "2", "1"))) %>% 
+  # mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  # filter(sample_seq_number == 1) %>% 
+  
+  mutate(time_from_malignancy_to_sample_myeloid = interval(start = date_of_myeloid1, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = sample_seq_number) %>% 
+  mutate(text = paste("Patient: ", mrn, "\n", sample_seq_number, " sample ", 
+                      "collected on ", as.Date(specimen_collection_date), 
+                      "\n",round(time_from_malignancy_to_sample_myeloid, 2), " from myeloid malingnancy", sep="")) %>% 
+
+  ggplot(aes(x = time_from_malignancy_to_sample_myeloid, y = mrn, color = sample_seq_number, group = mrn))+
+  geom_point(shape = 2, position=position_jitter(width = 0.2, height = 0))+
+  geom_line() +
+  # xlim(0, 400)+
+  geom_vline(xintercept = 0, color = "grey")+
+  labs(x="Time from Sample to \nMyeloid Malingnancy (in years)", 
+       y="Patient")+
+  theme(legend.position = "bottom", text = element_text(size = 17))
+```
+
+
+```{r, fig.height=9, fig.width=9}
+library(plotly)
+plot <- blood_patients2_subset %>% 
+  arrange(deidentified_patient_id, specimen_collection_date) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_seq_number = row_number(), .after = specimen_collection_date,
+         sample_seq_number = factor(sample_seq_number, levels = c("3", "2", "1"))) %>% 
+  # mutate(date_of_first_sample = first(specimen_collection_date), .after = sample_seq_number) %>% 
+  ungroup() %>% 
+  mutate(tt = case_when(
+    sample_seq_number == 1    ~ "st",
+    sample_seq_number == 2    ~ "nd",
+    sample_seq_number == 3    ~ "rd"
+  )) %>% 
+  # filter(sample_seq_number == 1) %>% 
+  
+  mutate(time_from_malignancy_to_sample_myeloid = interval(start = date_of_myeloid1, end = specimen_collection_date) /
+           duration(n = 1, unit = "years"), .after = sample_seq_number) %>% 
+  mutate(sequence = case_when(
+    time_from_malignancy_to_sample_myeloid <= 0    ~ "before",
+    time_from_malignancy_to_sample_myeloid > 0     ~ "after"
+  )) %>% 
+  mutate(text = paste("Patient:", mrn, "\n", sample_seq_number, tt, "sample", 
+                      "collected on", as.Date(specimen_collection_date), 
+                      "\n",round(time_from_malignancy_to_sample_myeloid, 2), "years",
+                      sequence, "myeloid malingnancy", sep=" ")) %>% 
+
+  ggplot(aes(x = time_from_malignancy_to_sample_myeloid, y = mrn, color = sample_seq_number, text = text))+
+  geom_point(shape = 2, position=position_jitter(width = 0.2, height = 0))+
+  geom_line() +
+  geom_vline(xintercept = 0, color = "grey")+
+  # scale_fill_viridis(discrete=T, name = "Time between myeloid malignancy and samples")+
+  labs(x="Time from Sample to \nMyeloid Malingnancy (in years)", 
+       y="Patient")+
+  guides(colour = "none")
+
+plot <- ggplotly(plot, tooltip="text")
+plot
+```
 
 
 
