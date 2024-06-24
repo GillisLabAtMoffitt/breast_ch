@@ -175,6 +175,34 @@ blood_patients2_subset <- blood_patients2 %>%
 
 None of these patients have sequential samples which would have fit the first criteria we had. So it is highly possible they were never sequenced.
 ```{r}
+sequenced_samples_todate <- 
+  readxl::read_xlsx("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/SamplesSequencedToDate_02.20.24.xlsx") %>% 
+  mutate(`Sample Name (Secondary)` = str_to_lower(`Sample Name (Secondary)`)) %>% 
+  mutate(mrn = as.character(MRN))
+
+
+blood_patients2_subset %>% 
+  select(mrn,
+         presample_id_chemo, seqsample_id_chemo,
+         presample_id_rad, seqsample_id_rad,
+         presample_id_chemorad,
+         seqsample_id_Achemo,
+         seqsample_id_Achemorad,
+         presample_id_hormone,
+         seqsample_id_hormone) %>% 
+  arrange(presample_id_chemo) %>% 
+  pivot_longer(cols = -mrn, values_to = "sample_id", names_to = NULL) %>% 
+  filter(!is.na(sample_id)) %>% 
+  separate_wider_delim(sample_id, 
+                       delim = "; ", 
+                       names = c(paste("sample_id_", 1:10, sep = "")), 
+                       too_few = "align_start", too_many = "merge", 
+                       cols_remove = TRUE) %>% 
+  pivot_longer(cols = -c(mrn), values_to = "sample_id") %>% 
+  filter(!is.na(sample_id)) %>% 
+  left_join(., sequenced_samples_todate, by = c("sample_id" = "Sample Name (Secondary)")) %>% 
+  arrange(MRN)
+
 blood_patients2_subset %>% 
   select(mrn, had_chemo, had_rad, had_hormone, had_immuno,
          presample_id_chemo, seqsample_id_chemo,

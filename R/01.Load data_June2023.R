@@ -44,6 +44,11 @@ cbc <-
                     sheet = "CBC") %>% 
   janitor::clean_names()
 
+neutrophlil <- 
+  readxl::read_xlsx(paste0(path, "/raw data/10R24000137_20240603_outfile.xlsx"),
+                    sheet = "Labs for Neutrophil") %>% 
+  janitor::clean_names()
+
 breast_marker_1 <- 
   readxl::read_xlsx(paste0(path, "/raw data/breast_sarcama_report_Yifen_April2023.xlsx"),
                     sheet = "SSDI_EMR_Labs_for_Breast") %>% 

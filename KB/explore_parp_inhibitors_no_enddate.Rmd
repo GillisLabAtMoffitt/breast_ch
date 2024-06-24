@@ -1,0 +1,265 @@
+---
+title: "Breast cancer and PARP inhibitors in Avatar data"
+author: "Christelle Colin-Leitzinger"
+date: '`r Sys.Date()`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+
+.figure {
+    margin-top: 100px;
+    margin-bottom: 100px;
+}
+
+table {
+    margin-top: 10px;
+    margin-bottom: 25px !important;
+}
+
+th, td { padding: 5px; }
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library}
+library(tidyverse)
+library(data.table)
+library(VennDiagram)
+library(lubridate)
+library(gtsummary)
+library(viridis)
+library(ggforce)
+library(kableExtra)
+theme_set(theme_classic())
+theme_gtsummary_compact()
+```
+
+```{r}
+# blood_patients <- 
+#   read_rds("/Users/colinccm/Documents/GitHub/Gillis/breast_ch/blood_patients_06272023.rds")
+breast_patients <- 
+  read_rds(paste0(here::here(), "/breast_patients_06272023.rds")) %>% 
+  distinct() %>% 
+  select(mrn, everything())
+treatment <- 
+  read_rds(paste0(here::here(), "/treatment_11142023.rds"))
+Treatment <- 
+  read_rds(paste0(here::here(), "/Treatment_06272023.rds"))
+
+sheetlist <- readxl::excel_sheets(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"))
+bind_sheet_fun <- function(i) {
+  d <- readxl::read_xlsx(paste0(here::here(), "/KB/Breast_Sarcoma_Medication.xlsx"), sheet = i)
+}
+parp_data <- map(sheetlist[1:8], bind_sheet_fun) %>% bind_rows() %>%
+  janitor::clean_names() %>%
+  filter(!is.na(mrn))
+rm(sheetlist, bind_sheet_fun)
+
+```
+
+```{r clean treatment}
+# Create regimen
+parp_data_lomg <- parp_data %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  mutate(treatment_type = "PARP inhibitors") %>% 
+  select(mrn, parp_start_date = document_date, 
+         parp_drug_name = drug_name, treatment_type
+         ) %>% 
+  distinct() %>% 
+  filter(mrn %in% c(unique(breast_patients$mrn))) %>%
+  # Combine drugs into regimen
+  arrange(mrn, parp_start_date) %>% 
+  group_by(mrn, parp_start_date, treatment_type) %>% 
+  summarise_at(vars(parp_drug_name), str_c, collapse = "; ") %>%
+  ungroup()
+
+
+# Summarize sequential treatment 
+# parp_data_wide <- parp_data_lomg %>% 
+#   group_by(mrn, parp_drug_name, treatment_type) %>% 
+#   summarise_at(vars(parp_start_date), str_c, collapse = "; ") %>%
+#   ungroup() %>% 
+#   # Fix date, this step will also take the latest end date because of how I arrange above
+#   mutate(parp_start_date = as.POSIXct(parp_start_date)) %>%
+#   mutate(dt_count = sapply(strsplit(parp_end_date, "; "), length)) %>% 
+#   separate_wider_delim(parp_end_date, 
+#                        delim = "; ", 
+#                        names = c(paste("parp_end_date", max(.$dt_count) : 1, sep = "")), 
+#                        too_few = "align_end", too_many = "drop", 
+#                        cols_remove = TRUE) %>%  
+#   mutate(parp_end_date = as.POSIXct(parp_end_date1)) %>%
+#   select(mrn, parp_drug_name, treatment_type, parp_start_date, parp_end_date) %>% 
+#   mutate(had_parp_treatment = "Yes")
+
+treatment <- treatment %>%
+  # Fix date
+  mutate(treatment_end_date = as.POSIXct(treatment_end_date)) %>%
+  # Add MRNs
+  inner_join(breast_patients %>%
+              select(patient_id, mrn) %>%
+               distinct(), .,
+            by = "patient_id") %>%
+  # Create line number to be able to add in PARP
+  arrange(mrn, treatment_start_date) %>%
+  group_by(mrn) %>%
+  mutate(line_number = row_number(mrn)) %>%
+  ungroup() %>%
+  mutate(had_standart_treatment = "Yes")
+  # mutate(had_chemo = ifelse(treatment_type == "chemo", "Yes", "No")) %>%
+  # mutate(had_hormone = ifelse(treatment_type == "hormone", "Yes", "No")) %>%
+  # mutate(had_immunoT = ifelse(treatment_type == "immunoT", "Yes", "No")) %>%
+  # mutate(had_radioT = ifelse(treatment_type == "radioT", "Yes", "No"))
+
+# Treatment <- Treatment %>% 
+#   # Add MRNs
+#   inner_join(breast_patients %>% 
+#                select(patient_id, mrn) %>% 
+#                distinct(),. , 
+#              by = "patient_id") %>% 
+#   mutate(had_standart_treatment = "Yes")
+```
+
+
+```{r}
+# # Organize regimen separately for patients with / without parp
+# Treatment_and_parp <- Treatment %>% 
+#   full_join(parp_data, ., 
+#             by = "mrn")
+# treatment_and_parp <- treatment %>% 
+#   full_join(parp_data, ., 
+#             by = "mrn")
+# 
+# # Create data for no parp patients----
+# treatment_no_parp <- Treatment_and_parp %>% 
+#   # Limit data to the patients who didn't received PARP
+#   filter(is.na(had_parp_treatment) & 
+#            !is.na(had_standart_treatment))
+# 
+# # Create data for parp only patients----
+# treatment_parp_only <- Treatment_and_parp %>% 
+#   filter(!is.na(had_parp_treatment) & 
+#            is.na(had_standart_treatment))# %>% 
+#   # select(mrn, parp_start_date,
+#   #        # treatment_type = treatment_type.y,
+#   #        parp_drug_name) %>% 
+#   # arrange(mrn, parp_start_date) #%>%
+#   # # group_by(mrn) %>% 
+#   # # mutate(line_number = row_number(mrn)) %>% 
+#   # # ungroup()
+# # treatment_parp_only <-  dcast(setDT(treatment_parp_only), mrn ~ rowid(mrn),
+# #                             value.var = c(
+# #                               "parp_start_date",
+# #                               "parp_drug_name"
+# #                             )
+# # ) %>% left_join(., Treatment, by = "mrn")
+```
+
+```{r select patients with parp}
+Treatment <- Treatment %>% 
+  # Add MRNs
+  inner_join(breast_patients %>% 
+               select(patient_id, mrn) %>% 
+               distinct(),. , 
+             by = "patient_id")
+
+# Create a combined PARP and drugs data
+parp_patient <- inner_join(breast_patients %>% 
+               distinct(), 
+               parp_data_lomg, 
+             by = "mrn") %>% 
+  full_join(., Treatment, by = "mrn")
+```
+
+```{r select presamples}
+parp_presamples <- parp_patient %>% 
+  mutate(blood_bf_parp = case_when(
+    specimen_collection_dt <= (parp_start_date + days(5))            ~ "Yes",
+    specimen_collection_dt > parp_start_date                         ~ "No",
+    is.na(parp_start_date)                                           ~ "not administred",
+    TRUE                                                                 ~ "No"
+  )) %>% 
+  mutate(time_presampleT1_parp = interval(
+      start = specimen_collection_dt, end = parp_start_date) /
+        duration(n = 1, units = "days")
+  )
+table(parp_presamples$blood_bf_parp)
+
+```
+
+
+```{r select presamples2}
+parp_presamples <- parp_presamples %>% 
+  mutate(blood_bf_parp_no_chemo_rad = case_when(
+    # blood before parp and no chemo
+    blood_bf_parp == "Yes" &
+      is.na(chemotherapy_start_date_1)                                 ~ "Yes",
+    # blood before parp & no chemo after blood AND before parp
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_1 &
+         chemotherapy_start_date_1 < parp_start_date)              ~ "No",
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_2 &
+         chemotherapy_start_date_2 < parp_start_date)              ~ "No",
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_3 &
+         chemotherapy_start_date_3 < parp_start_date)              ~ "No",
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_4 &
+         chemotherapy_start_date_4 < parp_start_date)              ~ "No",
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_5 &
+         chemotherapy_start_date_5 < parp_start_date)              ~ "No",
+    blood_bf_parp == "Yes" &
+      (specimen_collection_dt > chemotherapy_start_date_6 &
+         chemotherapy_start_date_6 < parp_start_date)              ~ "No",
+    # blood before parp & chemo is before blood
+    blood_bf_parp == "Yes" &
+      chemotherapy_start_date_1 < specimen_collection_dt               ~ "Yes",
+    # treatment_type == "PARP inhibitors" &
+    #   specimen_collection_dt <= (parp_start_date + days(5)) &
+    #   treatment_duration > (6 * 30.437) &                  # Add back----------------------------------
+      # time_presampleT1_parp <= treatment_interval                   ~ "Yes",
+    TRUE                                                                  ~ "No"
+  ), .after = 1)
+```
+
+
+```{r select presamples2}
+table(parp_presamples$blood_bf_parp_no_chemo_rad)
+a <- parp_presamples %>% filter(blood_bf_parp_no_chemo_rad == "Yes") %>% 
+  select(mrn, parp_start_date, parp_drug_name) %>% distinct() %>% 
+  arrange(mrn, parp_start_date)
+a <- dcast(setDT(a), mrn ~ rowid(mrn),
+                value.var = c(
+                  "parp_start_date",
+                  "parp_drug_name"
+                ))
+
+b <- a %>% left_join(., breast_patients %>% select(mrn, specimen_collection_dt), by = "mrn") %>% 
+  distinct(mrn, specimen_collection_dt, .keep_all = TRUE) %>% 
+  group_by(mrn) %>% 
+  mutate(number_of_samples = n(), .after = mrn) %>% 
+  filter(number_of_samples > 1) %>% 
+  ungroup()
+
+write_csv(b, "KB/breast patients with blood before PARP - need to abstract.csv")
+```
+

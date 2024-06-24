@@ -293,6 +293,26 @@ check <- parp_presamples %>%
 check$number_of_T1
 ```
 
+```{r}
+check <- parp_presamples %>%
+  filter(pre_sample_T1 == "Yes") %>% distinct(mrn)
+check <- left_join(check, parp_data) %>% arrange(parp_start_date)
+a <- dcast(setDT(check), mrn ~ rowid(mrn),
+                value.var = c(
+                  "parp_start_date",
+                  "parp_drug_name",
+                  "parp_end_date"
+                ))
+
+b <- a %>% left_join(., breast_patients %>% select(mrn, specimen_collection_dt), by = "mrn") %>% 
+  distinct(mrn, specimen_collection_dt, .keep_all = TRUE) %>% 
+  group_by(mrn) %>% 
+  mutate(number_of_samples = n(), .after = mrn) %>% 
+  filter(number_of_samples > 1) %>% 
+  ungroup()
+
+write_csv(b, "KB/breast patients with blood before PARP - with enddate - need to abstract.csv")
+```
 
 ```{r select presamples2}
 parp_presamples <- parp_presamples %>% 
@@ -320,6 +340,12 @@ parp_presamples <- parp_presamples %>%
        time_presampleT1_parp, parp_duration, 
        .direction = "updown") %>% 
   ungroup()
+```
+
+```{r}
+parp_presamples %>% select(mrn, pre_sample_T1, parp_duration) %>% 
+  arrange(pre_sample_T1) %>% 
+  distinct(mrn, .keep_all = TRUE)
 ```
 
 ```{r}
