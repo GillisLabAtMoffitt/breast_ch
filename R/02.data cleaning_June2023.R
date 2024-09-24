@@ -16,7 +16,7 @@ breast_dna <- breast_DNA %>%
   summarise_at(vars(sample_id), str_c, collapse = "; ") %>%
   ungroup()
 
-write_rds(breast_dna, "breast_dna_06272023.rds")
+# write_rds(breast_dna, "breast_dna_06272023.rds")
 
 # ER/PR/HER----
 breast_marker_1 <- breast_marker_1 %>% 
@@ -263,9 +263,9 @@ gcsf <- gcsf %>%
   select(patient_id, received_gcsf, gcsf_type = drug_catalog_nm)
 
 
-# CBC----
-cbc <- cbc %>% 
-  filter(lab_nm == "WBC(k/uL)") %>% 
+# CBC - neutropenia_at_anytime----
+wbc <- cbc %>% 
+  filter(lab_nm == "WBC(k/uL)" & lab_unit == "k/uL") %>% 
   mutate(neutropenia_at_anytime = case_when(
     lab_result < 1.5                     ~ "Neutropenia (WBC < 1.5 k/uL)"
   )) %>% 
@@ -278,6 +278,16 @@ cbc <- cbc %>%
     is.na(neutropenia_at_anytime)        ~ "No"
   )) %>% 
   select(patient_id, neutropenia_at_anytime)
+
+neutrophlil <- neutrophlil %>% 
+  filter(lab_unit != "%",
+         lab_nm != "Pct. Neutrophil Poly") %>% 
+  select(mrn, order_dtm, lab_nm, lab_result, lab_unit)
+
+# path <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzinger", "Breast CH",
+                 # "sequential_samples_hossein")
+# write_csv(neutrophlil, paste0(path, "/processed data/Neutrophil lab data.csv"))
+# write_csv(neutrophlil, paste0(here::here(), "/processed data/Neutrophil lab data.csv"))
 
 
 # Chemotherapy----
@@ -691,7 +701,7 @@ Global_data <-
   left_join(breast_patients, Treatment, by = "patient_id") %>% 
   # left_join(., ERPRHER, by = "mrn") %>% 
   full_join(., gcsf, by = "patient_id") %>% 
-  full_join(., cbc, by = "patient_id")
+  full_join(., wbc, by = "patient_id")
 
 
 write_rds(Global_data, "Global_data_06272023.rds")
