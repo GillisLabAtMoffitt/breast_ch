@@ -36,7 +36,7 @@ submitted_samples <-
 
 # Same for the first sequencing data (only 1 sample)
 fixed_ids_1 <- 
-  read_csv(paste0(here::here(), "/breast sample swapped ids in the first sequencing run_CCL.csv"))
+  read_csv(paste0(here::here(), "/processed data/breast sample swapped ids in the first sequencing run_CCL.csv"))
 # samples <- read_rds(paste0(here::here(), "/samples sequenced as of june 2023.rds"))
 # 
 # old_blood_patients <- 
@@ -46,19 +46,20 @@ fixed_ids_1 <-
 #   read_csv(paste0(path, "/raw data/Missing data.csv"))
 
 subsequent_cancer <- 
-  read_csv(paste0(here::here(), "/patient subsequent cancer after breast cancer - hossein.csv"))
+  read_csv(paste0(here::here(), "/processed data/patient subsequent cancer after breast cancer - hossein.csv"))
 
-path <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzinger", "Breast CH")
+path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
+                     "Breast_R01", "sequential_samples_hossein")
 cbc <- 
-  readxl::read_xlsx(paste0(path, "/raw data/breast_sarcama_report_Yifen_April2023.xlsx"),
+  readxl::read_xlsx(paste0(path_raw, "/raw_data/breast_sarcama_report_Yifen_April2023.xlsx"),
                     sheet = "CBC") %>% 
   janitor::clean_names()
 Demographic <- 
-  readxl::read_xlsx(paste0(path, "/raw data/breast_sarcama_report_Yifen_April2023.xlsx"),
+  readxl::read_xlsx(paste0(path_raw, "/raw_data/breast_sarcama_report_Yifen_April2023.xlsx"),
                     sheet = "Demographics", na = c("Missing", "Unknown")) %>% 
   janitor::clean_names()
 neutrophlil <- 
-  read_csv(paste0(path, "/processed data/Neutrophil lab data.csv"))
+  read_csv(paste0(path_save, "/processed data/Neutrophil lab data.csv"))
 
 
 ############################################################ II ### Merge data and limit to patients sequenced
@@ -179,7 +180,7 @@ write_csv(sequenced_patients, "Sequenced breast data with sequential sample info
 
 # Prep CBC for CHRS calculation----
 # cbc1 <- cbc
-cbc <- cbc1
+# cbc <- cbc1
 
 
 
@@ -192,7 +193,6 @@ hb_plt <- cbc %>%
               select(mrn, patient_id), by = c("patient_id")) 
 write_csv(hb_plt, paste0(here::here(), "/processed data/Cleaned HgB-Plt data.csv"))
 write_csv(hb_plt, paste0(path_save, "/processed data/Cleaned HgB-Plt data.csv"))
-
 
 hb_plt <- hb_plt %>% 
   # add date of pre-sample and select closest cbc
@@ -298,10 +298,61 @@ wbc <- wbc %>%
   distinct(mrn, .keep_all = TRUE) %>% 
   select(-c(specimen_collection_date, int))
 
+# MCV at pre-sample----
+mcv <- cbc %>% 
+  # mutate(mrn = as.character(mrn)) %>% 
+  filter(lab_nm == "MCV") %>% 
+  mutate(lab_result = as.numeric(lab_result)) %>% 
+  #add mrn
+  left_join(., Demographic %>% 
+              select(mrn, patient_id), by = c("patient_id")) %>% 
+  select(mrn, lab_result_mcv = lab_result, lab_unit_mcv = lab_unit, lab_date_mcv = order_dtm)
+write_csv(wbc, paste0(here::here(), "/processed data/Cleaned MCV data.csv"))
+write_csv(wbc, paste0(path_save, "/processed data/Cleaned MCV data.csv"))
+
+mcv <- mcv %>% 
+  # add date of pre-sample and select closest cbc
+  inner_join(., sequenced_patients %>% 
+               filter(time_to_treatment == "pre") %>%
+               select(mrn, specimen_collection_date), by = "mrn") %>% 
+  # select the closest value to pre-sample
+  mutate(int = abs(interval(start = lab_date_mcv, end = specimen_collection_date)/
+                     duration(n = 1, units = "days"))) %>% 
+  arrange(mrn, int) %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  select(-c(specimen_collection_date, int))
+
+# RDW at pre-sample----
+rdw <- cbc %>% 
+  # mutate(mrn = as.character(mrn)) %>% 
+  filter(lab_nm == "RDW") %>% 
+  mutate(lab_result = as.numeric(lab_result)) %>% 
+  #add mrn
+  left_join(., Demographic %>% 
+              select(mrn, patient_id), by = c("patient_id")) %>% 
+  select(mrn, lab_result_rdw = lab_result, lab_unit_rdw = lab_unit, lab_date_rdw = order_dtm)
+write_csv(wbc, paste0(here::here(), "/processed data/Cleaned RDW data.csv"))
+write_csv(wbc, paste0(path_save, "/processed data/Cleaned RDW data.csv"))
+
+rdw <- rdw %>% 
+  # add date of pre-sample and select closest cbc
+  inner_join(., sequenced_patients %>% 
+               filter(time_to_treatment == "pre") %>%
+               select(mrn, specimen_collection_date), by = "mrn") %>% 
+  # select the closest value to pre-sample
+  mutate(int = abs(interval(start = lab_date_rdw, end = specimen_collection_date)/
+                     duration(n = 1, units = "days"))) %>% 
+  arrange(mrn, int) %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  select(-c(specimen_collection_date, int))
+
 # CBC at pre-sample----
 cbc_at_presample <- full_join(wbc, hb_plt, by = "mrn") %>% 
-  full_join(., neutrophlil, by = "mrn")
-
+  full_join(., neutrophlil, by = "mrn") %>% 
+  full_join(., mcv, by = "mrn") %>% 
+  full_join(., rdw, by = "mrn") %>% 
+  `colnames<-`(c("mrn", paste0(colnames(.)[2:ncol(.)], "_at_presample")))
+  
 
 # summarize subsequent cancer----
 subsequent_cancer <- subsequent_cancer %>% 
@@ -421,12 +472,13 @@ sequenced_patients <- sequenced_patients %>%
          age_at_diagnosis, 
          primary_site_cd, primary_site_desc, 
          histology_code, histology, laterality,
-         tnm_stage, clinical_tnm_group_stage, tnm_cs_mixed_group_stage1,
+         tnm_stage, clinical_tnm_group_stage, 
+         tnm_cs_mixed_group_stage = tnm_cs_mixed_group_stage1,
          class_of_case_cd,
          starts_with("subsequent"),
          received_gcsf, gcsf_type, 
          
-         lab_result_wbc : overall_neutroplil_lab_units,
+         ends_with("_at_presample"),
          neutropenia_at_anytime,
          ER_results, PR_results, HER_results, 
          ER_PR_status, ER_PR_HER_status,
@@ -440,7 +492,13 @@ sequenced_patients <- sequenced_patients %>%
   )
 
 
-write_csv(sequenced_patients, "Identified breast data with sequenced sequential sample and clinical_07092024.csv")
+write_csv(sequenced_patients, 
+          paste0(path_save, 
+                 "/processed data/Identified breast data with sequenced sequential sample and clinical_", 
+                 today(), ".csv"))
+write_csv(sequenced_patients, 
+          paste0("processed data/Identified breast data with sequenced sequential sample and clinical_", 
+                 today(), ".csv"))
 
 deids_data <- sequenced_patients %>% 
   select(-c(mrn, sample_id, sample_family_id, 
@@ -449,5 +507,11 @@ deids_data <- sequenced_patients %>%
          contains("date")
 ))
 
-write_csv(deids_data, "De-identified breast data for sequenced sequential sample_07092024.csv")
-         
+write_csv(deids_data, 
+          paste0(path_save, 
+                 "/processed data/De-identified breast data for sequenced sequential sample_", today(), ".csv"))
+write_csv(deids_data, 
+          paste0("processed data/De-identified breast data for sequenced sequential sample_", 
+                 today(), ".csv"))
+
+# END new variables ----
