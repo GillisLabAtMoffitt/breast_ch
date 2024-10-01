@@ -7,7 +7,7 @@ path <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzinger",
 
 sequenced_patient_data <- read.csv(paste0(#path,
   here::here(),
-  "/processed data/Identified breast data with sequenced sequential sample and clinical_07092024.csv"))
+  "/processed data/Identified breast data with sequenced sequential sample and clinical_2024-09-30.csv"))
 wbc <- read.csv(paste0(#path,
   here::here(),
   "/processed data/Cleaned WBC data.csv"))
@@ -301,7 +301,8 @@ hgb <- HGB_PLT %>%
   group_by(mrn) %>% 
   fill(persistent_low_hgb, prolonged_low_hgb, .direction = "updown") %>% 
   ungroup() %>% 
-  select(mrn, persistent_low_hgb, prolonged_low_hgb, lab_result) %>% 
+  select(mrn, persistent_low_hgb, prolonged_low_hgb, lab_result,
+         reason_for_no_persistent_prolonged_cytopenia_date) %>% 
   distinct(mrn, persistent_low_hgb, prolonged_low_hgb, .keep_all = TRUE) %>% 
   mutate(persistent_low_hgb = case_when(
     persistent_low_hgb == "No"                              ~ "No",
@@ -348,12 +349,12 @@ plt <- HGB_PLT %>%
 anc <- neutrophil %>%
   right_join(., temp, by = "mrn")  %>% 
   mutate(persistent_low_anc = case_when(
-    lab_neutrophil_date >= (max_persistent_cytopenia_date - months(1)) &
+    lab_neutrophil_date > (max_persistent_cytopenia_date - months(1)) &
       lab_neutrophil_date <= max_persistent_cytopenia_date &
       lab_result_neutrophil >= 1.8                           ~ "No"
   )) %>% 
   mutate(prolonged_low_anc = case_when(
-    lab_neutrophil_date >= (max_prolonged_cytopenia_date - months(3)) &
+    lab_neutrophil_date > (max_prolonged_cytopenia_date - months(3)) &
       lab_neutrophil_date <= max_prolonged_cytopenia_date &
       lab_result_neutrophil >= 1.8                           ~ "No"
   )) %>% 
@@ -421,4 +422,4 @@ write_csv(deids_data,
                  today(), ".csv"))
 
 
-# END NADIR and cytopenia variales----
+# END NADIR and cytopenia variables----
