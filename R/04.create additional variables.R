@@ -228,8 +228,8 @@ write_csv(sequenced_patient_data, paste0(path, "/processed data",
                                          "/Identified breast data with sequenced sequential sample and clinical-CBC_",
                                          today(), ".csv"))
 
-# Cytopenia
-# Cytopenias were defined by using World Health Organization criteria ######### Do it later
+# Cytopenia----
+# Cytopenias were defined by using World Health Organization criteria
 # anemia = hemoglobin concentration <13.0 g/dl in male participants 
 # and <12.0 g/dl in female participants; 
 # thrombocytopenia = platelet counts <150 × 109 cells/l; 
@@ -249,32 +249,29 @@ temp <- sequenced_patient_data %>%
   mutate_at(c("date_of_first_corresponding_treatment",
               "hormone_therapy_end_date1_1",
               "chemotherapy_end_date1_1"), ~ as.POSIXct(.)) %>% 
+  mutate(treatment_date = case_when(
+    treatment_type == "radiation"                            ~ date_of_first_corresponding_treatment,
+    treatment_type == "hormone"                              ~ hormone_therapy_end_date1_1,
+    str_detect(treatment_type, "chemo")                      ~ chemotherapy_end_date1_1
+  )) %>% 
   mutate(max_persistent_cytopenia_date = case_when(
-    treatment_type == "radiation"                            ~ date_of_first_corresponding_treatment + months(1),
-    
+    treatment_type == "radiation"                            ~ treatment_date + months(1),
+
     treatment_type == "hormone" &
-      is.na(hormone_therapy_end_date1_1)                     ~ NA_POSIXct_,
-    treatment_type == "hormone" &
-      !is.na(hormone_therapy_end_date1_1)                    ~ hormone_therapy_end_date1_1 + months(1),
-    
+      !is.na(hormone_therapy_end_date1_1)                    ~ treatment_date + months(1),
+
     str_detect(treatment_type, "chemo") &
-      is.na(chemotherapy_end_date1_1)                        ~ NA_POSIXct_,
-    str_detect(treatment_type, "chemo") &
-      !is.na(chemotherapy_end_date1_1)                       ~ chemotherapy_end_date1_1 + months(1),
+      !is.na(chemotherapy_end_date1_1)                       ~ treatment_date + months(1),
     
   )) %>% 
   mutate(max_prolonged_cytopenia_date = case_when(
-    treatment_type == "radiation"                            ~ date_of_first_corresponding_treatment + months(3),
-    
+    treatment_type == "radiation"                            ~ treatment_date + months(3),
+
     treatment_type == "hormone" &
-      is.na(hormone_therapy_end_date1_1)                     ~ NA_POSIXct_,
-    treatment_type == "hormone" &
-      !is.na(hormone_therapy_end_date1_1)                    ~ hormone_therapy_end_date1_1 + months(3),
-    
+      !is.na(hormone_therapy_end_date1_1)                    ~ treatment_date + months(3),
+
     str_detect(treatment_type, "chemo") &
-      is.na(chemotherapy_end_date1_1)                        ~ NA_POSIXct_,
-    str_detect(treatment_type, "chemo") &
-      !is.na(chemotherapy_end_date1_1)                       ~ chemotherapy_end_date1_1 + months(3),
+      !is.na(chemotherapy_end_date1_1)                       ~ treatment_date + months(3),
     
   )) %>% 
   mutate(reason_for_no_persistent_prolonged_cytopenia_date = case_when(
@@ -283,98 +280,140 @@ temp <- sequenced_patient_data %>%
       is.na(hormone_therapy_end_date1_1)                     ~ "no hormone end date",
     str_detect(treatment_type, "chemo") &
       is.na(chemotherapy_end_date1_1)                        ~ "no chemo end date"
-  )) 
+  )) %>% 
+  mutate_at(c("max_persistent_cytopenia_date",
+              "max_prolonged_cytopenia_date"), ~ as.Date(.))
 
 hgb <- HGB_PLT %>%
   filter(lab_nm == "Hemoglobin") %>% 
-  right_join(., temp, by = "mrn")  %>% 
+  mutate(lab_date = as.POSIXct(lab_date)) %>% 
+  right_join(., temp, by = "mrn") %>% 
   mutate(persistent_low_hgb = case_when(
-    lab_date >= (max_persistent_cytopenia_date - months(1)) &
+    is.na(max_persistent_cytopenia_date)                    ~ "No treatment end date",
+    lab_date >= treatment_date &
       lab_date <= max_persistent_cytopenia_date &
-      lab_result >= 12                                         ~ "No" # 12 is for female
+      lab_result >= 12                                      ~ "No" # anemia is <12 is for female
   )) %>% 
   mutate(prolonged_low_hgb = case_when(
-    lab_date >= (max_prolonged_cytopenia_date - months(3)) &
+    is.na(max_prolonged_cytopenia_date)                     ~ "No treatment end date",
+    lab_date >= treatment_date &
       lab_date <= max_prolonged_cytopenia_date &
-      lab_result >= 12                                         ~ "No" # 12 is for female
+      lab_result >= 12                                      ~ "No"
   )) %>% 
-  group_by(mrn) %>% 
-  fill(persistent_low_hgb, prolonged_low_hgb, .direction = "updown") %>% 
-  ungroup() %>% 
-  select(mrn, persistent_low_hgb, prolonged_low_hgb, lab_result,
-         reason_for_no_persistent_prolonged_cytopenia_date) %>% 
-  distinct(mrn, persistent_low_hgb, prolonged_low_hgb, .keep_all = TRUE) %>% 
+  group_by(mrn) %>%
+  fill(persistent_low_hgb, prolonged_low_hgb, .direction = "updown") %>%
+  ungroup() %>%
   mutate(persistent_low_hgb = case_when(
     persistent_low_hgb == "No"                              ~ "No",
+    persistent_low_hgb == "No treatment end date"           ~ "No treatment end date",
+    lab_date < treatment_date |
+      lab_date > max_persistent_cytopenia_date              ~ "Not correct lab date",
     is.na(lab_result)                                       ~ NA_character_,
     is.na(persistent_low_hgb)                               ~ "Yes"
   )) %>% 
   mutate(prolonged_low_hgb = case_when(
     prolonged_low_hgb == "No"                               ~ "No",
+    prolonged_low_hgb == "No treatment end date"            ~ "No treatment end date",
+    lab_date < treatment_date |
+      lab_date > max_prolonged_cytopenia_date               ~ "Not correct lab date",
     is.na(lab_result)                                       ~ NA_character_,
     is.na(prolonged_low_hgb)                                ~ "Yes"
   )) %>% 
-  select(-lab_result)
+  select(mrn, persistent_low_hgb, prolonged_low_hgb) %>% 
+  filter(persistent_low_hgb == "Yes" | persistent_low_hgb == "No" |
+           prolonged_low_hgb == "Yes" | prolonged_low_hgb == "No") %>% 
+  mutate_at(c("persistent_low_hgb",
+              "prolonged_low_hgb"), ~ na_if(., "Not correct lab date")) %>% 
+  arrange(mrn, persistent_low_hgb) %>% 
+  distinct(mrn, persistent_low_hgb, prolonged_low_hgb, .keep_all = TRUE)
+  
 
 plt <- HGB_PLT %>%
   filter(lab_nm == "Platelet Count(k/uL)") %>% 
-  right_join(., temp, by = "mrn")  %>% 
+  mutate(lab_date = as.POSIXct(lab_date)) %>% 
+  right_join(., temp, by = "mrn") %>% 
   mutate(persistent_low_plt = case_when(
-    lab_date >= (max_persistent_cytopenia_date - months(1)) &
+    is.na(max_persistent_cytopenia_date)                    ~ "No treatment end date",
+    lab_date >= treatment_date &
       lab_date <= max_persistent_cytopenia_date &
-      lab_result >= 150                                      ~ "No"
+      lab_result >= 12                                      ~ "No" # anemia is <12 is for female
   )) %>% 
   mutate(prolonged_low_plt = case_when(
-    lab_date >= (max_prolonged_cytopenia_date - months(3)) &
+    is.na(max_prolonged_cytopenia_date)                     ~ "No treatment end date",
+    lab_date >= treatment_date &
       lab_date <= max_prolonged_cytopenia_date &
-      lab_result >= 150                                      ~ "No" # 12 is for female
+      lab_result >= 12                                      ~ "No"
   )) %>% 
-  group_by(mrn) %>% 
-  fill(persistent_low_plt, prolonged_low_plt, .direction = "updown") %>% 
-  ungroup() %>% 
-  select(mrn, persistent_low_plt, prolonged_low_plt, lab_result) %>% 
-  distinct(mrn, persistent_low_plt, prolonged_low_plt, .keep_all = TRUE) %>% 
+  group_by(mrn) %>%
+  fill(persistent_low_plt, prolonged_low_plt, .direction = "updown") %>%
+  ungroup() %>%
   mutate(persistent_low_plt = case_when(
     persistent_low_plt == "No"                              ~ "No",
-    is.na(lab_result)                            ~ NA_character_,
+    persistent_low_plt == "No treatment end date"           ~ "No treatment end date",
+    lab_date < treatment_date |
+      lab_date > max_persistent_cytopenia_date              ~ "Not correct lab date",
+    is.na(lab_result)                                       ~ NA_character_,
     is.na(persistent_low_plt)                               ~ "Yes"
   )) %>% 
   mutate(prolonged_low_plt = case_when(
     prolonged_low_plt == "No"                               ~ "No",
-    is.na(lab_result)                            ~ NA_character_,
+    prolonged_low_plt == "No treatment end date"            ~ "No treatment end date",
+    lab_date < treatment_date |
+      lab_date > max_prolonged_cytopenia_date               ~ "Not correct lab date",
+    is.na(lab_result)                                       ~ NA_character_,
     is.na(prolonged_low_plt)                                ~ "Yes"
   )) %>% 
-  select(-lab_result)
+  select(mrn, persistent_low_plt, prolonged_low_plt) %>% 
+  filter(persistent_low_plt == "Yes" | persistent_low_plt == "No" |
+           prolonged_low_plt == "Yes" | prolonged_low_plt == "No") %>% 
+  mutate_at(c("persistent_low_plt",
+              "prolonged_low_plt"), ~ na_if(., "Not correct lab date")) %>% 
+  arrange(mrn, persistent_low_plt) %>% 
+  distinct(mrn, persistent_low_plt, prolonged_low_plt, .keep_all = TRUE)
+  
 
 anc <- neutrophil %>%
-  right_join(., temp, by = "mrn")  %>% 
+  mutate(lab_neutrophil_date = as.POSIXct(lab_neutrophil_date)) %>% 
+  right_join(., temp, by = "mrn") %>% 
   mutate(persistent_low_anc = case_when(
-    lab_neutrophil_date > (max_persistent_cytopenia_date - months(1)) &
+    is.na(max_persistent_cytopenia_date)                    ~ "No treatment end date",
+    lab_neutrophil_date >= treatment_date &
       lab_neutrophil_date <= max_persistent_cytopenia_date &
-      lab_result_neutrophil >= 1.8                           ~ "No"
+      lab_result_neutrophil >= 12                                      ~ "No" # anemia is <12 is for female
   )) %>% 
   mutate(prolonged_low_anc = case_when(
-    lab_neutrophil_date > (max_prolonged_cytopenia_date - months(3)) &
+    is.na(max_prolonged_cytopenia_date)                     ~ "No treatment end date",
+    lab_neutrophil_date >= treatment_date &
       lab_neutrophil_date <= max_prolonged_cytopenia_date &
-      lab_result_neutrophil >= 1.8                           ~ "No"
+      lab_result_neutrophil >= 12                                      ~ "No"
   )) %>% 
-  group_by(mrn) %>% 
-  fill(persistent_low_anc, prolonged_low_anc, .direction = "updown") %>% 
-  ungroup() %>% 
-  select(mrn, persistent_low_anc, prolonged_low_anc, lab_result_neutrophil) %>% 
-  distinct(mrn, persistent_low_anc, prolonged_low_anc, .keep_all = TRUE) %>% 
+  group_by(mrn) %>%
+  fill(persistent_low_anc, prolonged_low_anc, .direction = "updown") %>%
+  ungroup() %>%
   mutate(persistent_low_anc = case_when(
     persistent_low_anc == "No"                              ~ "No",
-    is.na(lab_result_neutrophil)                            ~ NA_character_,
+    persistent_low_anc == "No treatment end date"           ~ "No treatment end date",
+    lab_neutrophil_date < treatment_date |
+      lab_neutrophil_date > max_persistent_cytopenia_date              ~ "Not correct lab date",
+    is.na(lab_result_neutrophil)                                       ~ NA_character_,
     is.na(persistent_low_anc)                               ~ "Yes"
   )) %>% 
   mutate(prolonged_low_anc = case_when(
     prolonged_low_anc == "No"                               ~ "No",
-    is.na(lab_result_neutrophil)                            ~ NA_character_,
+    prolonged_low_anc == "No treatment end date"            ~ "No treatment end date",
+    lab_neutrophil_date < treatment_date |
+      lab_neutrophil_date > max_prolonged_cytopenia_date               ~ "Not correct lab date",
+    is.na(lab_result_neutrophil)                                       ~ NA_character_,
     is.na(prolonged_low_anc)                                ~ "Yes"
   )) %>% 
-  select(-lab_result_neutrophil)
-  
+  select(mrn, persistent_low_anc, prolonged_low_anc) %>% 
+  filter(persistent_low_anc == "Yes" | persistent_low_anc == "No" |
+           prolonged_low_anc == "Yes" | prolonged_low_anc == "No") %>% 
+  mutate_at(c("persistent_low_anc",
+              "prolonged_low_anc"), ~ na_if(., "Not correct lab date")) %>% 
+  arrange(mrn, persistent_low_anc) %>% 
+  distinct(mrn, persistent_low_anc, prolonged_low_anc, .keep_all = TRUE)
+
 sequenced_patient_data <- sequenced_patient_data %>% 
   left_join(., hgb, by = "mrn") %>% 
   left_join(., plt, by = "mrn") %>% 
