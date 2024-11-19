@@ -9,7 +9,8 @@ path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzin
 
 sequenced_patient_data <- read.csv(paste0(#path_save,
   here::here(),
-  "/processed data/Identified breast data with sequenced sequential sample and clinical_2024-09-30.csv"))
+  "/processed data/Identified breast data with sequenced sequential sample and clinical_2024-09-30.csv")) %>% 
+  mutate(mrn = as.character(mrn))
 sequenced_patient_data <- read_rds(paste0(#path_save,
   here::here(),
   "/processed data/Identified breast data with sequenced sequential sample and clinical_2024-09-30.rds"))
@@ -19,14 +20,19 @@ path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
 chart_dat <- 
   readxl::read_xlsx(paste0(#path_raw, 
     here::here(),
-    "/chart_reviewed/Breast_chart reviews template_11052024.xlsx"),
-                    sheet = "Treatment_CBCs", na = c("NA", "UNK")) %>% 
+    "/chart_reviewed/Breast_chart reviews template_11182024.xlsx"),
+                    sheet = "Treatment_CBCs", na = c("NA", "UNK", "ND")) %>% 
   janitor::clean_names()
 
 
 # Cleaning----
 chart_dat <- chart_dat %>% 
-  filter(is.na(duplicated_rows)) %>% 
+  # Remove duplicated rows which appears between my output file and what Danny received
+  # filter(is.na(duplicated_rows)) %>% # this variable is wrong
+  group_by(mrn, sample_name_secondary, collection_date) %>% 
+  fill(everything(), .direction = "updown") %>% 
+  ungroup() %>% 
+  distinct(mrn, sample_name_secondary, collection_date, .keep_all = TRUE) %>% 
   mutate(first_treatment_h_end_date = as.Date(as.numeric(first_treatment_h_end_date),
                                               # format = "%Y-%m-%d"), 
                                               origin = "1899-12-30"
@@ -42,25 +48,26 @@ chart_dat <- chart_dat %>%
     !is.na(hormone_end_date1_1)                     ~ hormone_end_date1_1,
     hormone_end_date_current == "Currently use"     ~ today() + months(1)
   )) %>% 
-  mutate(progression_comment = date_of_progression, .after = date_of_progression,
+  mutate(#progression_comment = date_of_progression, .after = date_of_progression,
          date_of_progression = as.Date(as.numeric(date_of_progression),
                                        # format = "%Y-%m-%d"), 
                                        origin = "1899-12-30"
-         ),
-         progression_comment = case_when(
-           is.na(date_of_progression)               ~ progression_comment
+         # ),
+         # progression_comment = case_when(
+         #   is.na(date_of_progression)               ~ progression_comment # No need anymore
          )) %>% 
-  mutate(last_followup_comment = date_of_last_followup, .after = date_of_last_followup,
+  mutate(#last_followup_comment = date_of_last_followup, .after = date_of_last_followup,
          date_of_last_followup = as.Date(as.numeric(date_of_last_followup),
                                          # format = "%Y-%m-%d"), 
                                          origin = "1899-12-30"
-         ),
-         last_followup_comment = case_when(
-           is.na(date_of_last_followup)             ~ last_followup_comment
-         ))
+         # ),
+         # last_followup_comment = case_when(
+         #   is.na(date_of_last_followup)             ~ last_followup_comment # No need anymore
+         )) %>% 
+  select(-c(x0, x63, duplicated_rows))
   
 
-chart_dat <- chart_dat %>% 
+chart_dat1 <- chart_dat %>% 
   pivot_longer(cols = c(chemo1_start_date_1, chemo2_start,
                         radiation_start_date_1, hormone_start_date_1), 
                names_to = "treatment_type", 
@@ -93,13 +100,22 @@ chart_dat <- chart_dat %>%
 # Join new sample classification with data----
 sequenced_patient_data <- sequenced_patient_data %>% 
   mutate(specimen_collection_date = as.POSIXct(specimen_collection_date, origin = "1899-12-30")) %>% 
+  select(-boost_dose_c_gy_1) %>% 
   full_join(.,
-            chart_dat, 
+            chart_dat1 %>% select(-collection_date), 
             by = c("mrn", 
                    "Sample.Name..Secondary." = "sample_name_secondary")) %>% 
-  select(mrn : specimen_collection_date, collection_date_danny = collection_date,
+  full_join(.,
+            chart_dat %>% 
+              select(mrn, type_of_radiation : boost_dose_c_gy_1) %>% 
+              distinct(), 
+            by = c("mrn")) %>% 
+  mutate(type_of_radiation_1 = type_of_radiation, .after = radiation_start_date_1) %>% 
+  mutate(total_dose_1 = total_dose, .after = type_of_radiation_1) %>% 
+  mutate(boost_dose_c_gy = boost_dose_c_gy_1, .after = total_dose_1) %>% 
+  select(mrn : specimen_collection_date, 
          age_at_sample : treatment_type, sequence_sample_vs_treatment, treatment_received,
-         everything()) %>% 
+         everything(), -type_of_radiation, -total_dose) %>% 
   mutate(discrepancies_old_new_sample_sequence = case_when(
     treatment_type == "chemo" &
       str_detect(sequence_sample_vs_treatment, "after_hormone|after_radiation")      ~ "need to be reclassified/remove",
