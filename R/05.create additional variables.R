@@ -8,11 +8,11 @@ path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzin
 
 sequenced_patient_data <- read.csv(paste0(# path_save,
   here::here(),
-  "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-19.csv")) %>% 
+  # "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.csv")) %>% 
   mutate(mrn = as.character(mrn))
 sequenced_patient_data <- read_rds(paste0(
   here::here(),
-  "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-19.rds"))
+  # "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.rds"))
 
 wbc <- read.csv(paste0(#path_save,
   here::here(),
@@ -34,87 +34,14 @@ Demographic <-
                     sheet = "Demographics", na = c("Missing", "Unknown")) %>% 
   janitor::clean_names()
 
-chart_dat <- 
-  readxl::read_xlsx(paste0(#path_raw, 
-    here::here(),
-    "/chart_reviewed/Breast_chart reviews template_11182024.xlsx"),
-    sheet = "Treatment_CBCs", na = c("NA", "UNK", "ND")) %>% 
-  janitor::clean_names()
+# chart_dat <- 
+#   readxl::read_xlsx(paste0(#path_raw, 
+#     here::here(),
+#     "/chart_reviewed/Breast_chart reviews template_11252024.xlsx"),
+#     sheet = "Treatment_CBCs", na = c("NA", "UNK", "ND")) %>% 
+#   janitor::clean_names()
 
 
-# Update clinical with chart review----
-sequenced_patient_data <- chart_dat %>% 
-  select(-c(x0, x63, duplicated_rows)) %>% 
-  # Remove duplicated rows which appears between my output file and what Danny received
-  # filter(is.na(duplicated_rows)) %>% # this variable is wrong
-  group_by(mrn, sample_name_secondary, collection_date) %>% 
-  fill(everything(), .direction = "updown") %>% 
-  ungroup() %>% 
-  distinct(mrn, sample_name_secondary, collection_date, .keep_all = TRUE) %>% 
-  select(mrn, 
-         smoking_status : oncotype_dx,
-         dead_or_alive,
-         date_of_last_followup, 
-         progression_type, date_of_progression) %>% 
-  mutate_at(c("dead_or_alive"), ~ str_to_sentence(.)) %>% 
-  distinct(mrn, .keep_all = TRUE) %>% 
-  left_join(sequenced_patient_data %>% 
-              select(-c(
-                smoking_status, new_vital_status,
-                contains("progesterone"), contains("estrogen"),
-                starts_with("os_"), type_of_first_recurrence_desc,
-                ends_with("_results"), starts_with("her2"), 
-                ER_PR_status, ER_PR_HER_status, 
-                contains("oncotype_dx")
-              )), 
-            ., 
-            by = "mrn") %>% 
-  mutate(os_event = case_when(
-    dead_or_alive == "Alive"            ~ 0,
-    dead_or_alive == "Dead"             ~ 1
-  ), .after = dead_or_alive) %>% 
-  mutate(os_time_from_dx_months = interval(start = date_of_diagnosis, 
-                                           end = date_of_last_followup)/
-           duration(n = 1, unit = "months"), 
-         .after = os_event) %>% 
-  mutate(os_time_from_tx_start_months = interval(start = date_of_first_corresponding_treatment, 
-                                           end = date_of_last_followup)/
-           duration(n = 1, unit = "months"), 
-         .after = os_event) %>% 
-  
-  mutate(pfs_event = case_when(
-    is.na(progression_type)             ~ 0,
-    !is.na(progression_type)            ~ 1
-  ), .after = progression_type) %>% 
-  mutate(pfs_date = coalesce(date_of_progression, date_of_last_followup), 
-         .after = pfs_event) %>% 
-  mutate(pfs_time_months = interval(start = date_of_first_corresponding_treatment, end = pfs_date)/
-           duration(n = 1, unit = "months"), 
-         .after = pfs_event)
-
-write_csv(sequenced_patient_data, paste0(here::here(), "/processed data",
-                                         "/Identified breast data with sequenced sequential sample and chart review clinical_",
-                                         today(), ".csv"))
-write_csv(sequenced_patient_data, paste0(path_save, "/processed data",
-                                         "/Identified breast data with sequenced sequential sample and chart review clinical_",
-                                         today(), ".csv"))
-
-deids_data <- sequenced_patient_data %>% 
-  select(-c(mrn, sample_id, sample_family_id, Sample.Name..Secondary.,
-            submitted_ID_for_added_samples, received_ID_for_added_samples,
-            Sample_Name_Fastq_file,
-            contains("date")
-  ))
-
-write_csv(deids_data, 
-          paste0(path_save, 
-                 "/processed data", 
-                 "/De-identified breast data with sequenced sequential sample and chart review clinical_", 
-                 today(), ".csv"))
-write_csv(deids_data, 
-          paste0("processed data", 
-                 "/De-identified breast data with sequenced sequential sample and chart review clinical_", 
-                 today(), ".csv"))
 
 
 # CBC ----

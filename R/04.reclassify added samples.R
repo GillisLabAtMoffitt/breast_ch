@@ -20,7 +20,7 @@ path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
 chart_dat <- 
   readxl::read_xlsx(paste0(#path_raw, 
     here::here(),
-    "/chart_reviewed/Breast_chart reviews template_11182024.xlsx"),
+    "/chart_reviewed/Breast_chart reviews template_11252024.xlsx"),
                     sheet = "Treatment_CBCs", na = c("NA", "UNK", "ND")) %>% 
   janitor::clean_names()
 
@@ -48,23 +48,23 @@ chart_dat <- chart_dat %>%
     !is.na(hormone_end_date1_1)                     ~ hormone_end_date1_1,
     hormone_end_date_current == "Currently use"     ~ today() + months(1)
   )) %>% 
-  mutate(#progression_comment = date_of_progression, .after = date_of_progression,
-         date_of_progression = as.Date(as.numeric(date_of_progression),
-                                       # format = "%Y-%m-%d"), 
-                                       origin = "1899-12-30"
-         # ),
-         # progression_comment = case_when(
-         #   is.na(date_of_progression)               ~ progression_comment # No need anymore
-         )) %>% 
-  mutate(#last_followup_comment = date_of_last_followup, .after = date_of_last_followup,
-         date_of_last_followup = as.Date(as.numeric(date_of_last_followup),
-                                         # format = "%Y-%m-%d"), 
-                                         origin = "1899-12-30"
-         # ),
-         # last_followup_comment = case_when(
-         #   is.na(date_of_last_followup)             ~ last_followup_comment # No need anymore
-         )) %>% 
-  select(-c(x0, x63, duplicated_rows))
+  # mutate(#progression_comment = date_of_progression, .after = date_of_progression,
+  #        date_of_progression = as.Date(as.numeric(date_of_progression),
+  #                                      # format = "%Y-%m-%d"), 
+  #                                      origin = "1899-12-30"
+  #        # ),
+  #        # progression_comment = case_when(
+  #        #   is.na(date_of_progression)               ~ progression_comment # No need anymore
+  #        )) %>% 
+  # mutate(#last_followup_comment = date_of_last_followup, .after = date_of_last_followup,
+  #        date_of_last_followup = as.Date(as.numeric(date_of_last_followup),
+  #                                        # format = "%Y-%m-%d"), 
+  #                                        origin = "1899-12-30"
+  #        # ),
+  #        # last_followup_comment = case_when(
+  #        #   is.na(date_of_last_followup)             ~ last_followup_comment # No need anymore
+  #        )) %>% 
+  select(-c(x0, x63))
   
 
 chart_dat1 <- chart_dat %>% 
@@ -126,18 +126,104 @@ sequenced_patient_data <- sequenced_patient_data %>%
 
 
 
-# Save----
-write_csv(sequenced_patient_data, 
-          paste0(path_save, 
-                 "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
-                 today(), ".csv"))
-write_csv(sequenced_patient_data, 
-          paste0("processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
-                 today(), ".csv"))
-write_rds(sequenced_patient_data, 
-          paste0("processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
-                 today(), ".rds"))
+# # Save----
+# write_csv(sequenced_patient_data, 
+#           paste0(path_save, 
+#                  "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
+#                  today(), ".csv"))
+# write_csv(sequenced_patient_data, 
+#           paste0("processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
+#                  today(), ".csv"))
+# write_rds(sequenced_patient_data, 
+#           paste0("processed data/Identified breast data with re-classified sequenced sequential sample and clinical_", 
+#                  today(), ".rds"))
+# 
+# deids_data <- sequenced_patient_data %>% 
+#   select(-c(mrn, sample_id, sample_family_id, Sample.Name..Secondary.,
+#             submitted_ID_for_added_samples, received_ID_for_added_samples,
+#             Sample_Name_Fastq_file,
+#             contains("date")
+#   ))
+# 
+# write_csv(deids_data, 
+#           paste0(path_save, 
+#                  "/processed data/De-identified breast data with re-classified sequenced sequential sample_", today(), ".csv"))
+# write_csv(deids_data, 
+#           paste0("processed data/De-identified breast data with re-classified sequenced sequential sample_", 
+#                  today(), ".csv"))
 
+# END re-classified samples ----
+
+# Update clinical with chart review----
+sequenced_patient_data <- chart_dat %>% 
+  # Select 1 clinical row for each patient
+  select(mrn, first_treatment_h_end_date,
+         smoking_status : oncotype_dx,
+         dead_or_alive,
+         date_of_last_followup, 
+         progression_type, date_of_progression) %>% 
+  group_by(mrn) %>%
+  fill(everything(), .direction = "updown") %>%
+  ungroup() %>%
+  distinct(mrn, .keep_all = TRUE) %>% 
+  mutate_at(c("dead_or_alive"), ~ str_to_sentence(.)) %>% 
+  left_join(sequenced_patient_data %>% 
+              # Remove initially created variables before to add updated chart reviewed var
+              select(-c(
+                smoking_status, new_vital_status,
+                contains("progesterone"), contains("estrogen"),
+                starts_with("os_"), type_of_first_recurrence_desc,
+                ends_with("_results"), starts_with("her2"), 
+                ER_PR_status, ER_PR_HER_status, 
+                contains("oncotype_dx")
+              )), 
+            ., 
+            by = "mrn") %>% 
+  # Update OS and PFS
+  mutate(os_event = case_when(
+    dead_or_alive == "Alive"            ~ 0,
+    dead_or_alive == "Dead"             ~ 1
+  ), .after = dead_or_alive) %>% 
+  mutate(os_time_from_dx_months = interval(start = date_of_diagnosis, 
+                                           end = date_of_last_followup)/
+           duration(n = 1, unit = "months"), 
+         .after = os_event) %>% 
+  mutate(os_time_from_tx_start_months = interval(start = date_of_first_corresponding_treatment, 
+                                                 end = date_of_last_followup)/
+           duration(n = 1, unit = "months"), 
+         .after = os_event) %>% 
+  
+  mutate(pfs_event = case_when(
+    is.na(progression_type)             ~ 0,
+    !is.na(progression_type)            ~ 1
+  ), .after = progression_type) %>% 
+  mutate(pfs_date = coalesce(date_of_progression, date_of_last_followup), 
+         .after = pfs_event) %>% 
+  mutate(pfs_time_months = interval(start = date_of_first_corresponding_treatment, end = pfs_date)/
+           duration(n = 1, unit = "months"), 
+         .after = pfs_event) %>% 
+  # update chemo length as Nancy changed a end date
+  mutate(chemo_length_indays = case_when(
+    treatment_type == "chemo" |
+      treatment_type == "chemorad"         ~ interval(start = chemotherapy_start_date_1,
+                                                      end = first_treatment_h_end_date)/
+      duration(n = 1, units = "days")
+  )) %>% 
+  mutate(chart_reviewed_chemotherapy_end_date = first_treatment_h_end_date,
+         .after = chemotherapy_end_date1_1) %>% 
+  select(-c(first_treatment_h_end_date, chemotherapy_end_date1_1))
+
+write_csv(sequenced_patient_data, paste0(here::here(), "/processed data",
+                                         "/Identified breast data with re-classified sequenced sequential sample and chart review clinical_",
+                                         today(), ".csv"))
+write_rds(sequenced_patient_data, paste0(here::here(), "/processed data",
+                                         "/Identified breast data with re-classified sequenced sequential sample and chart review clinical_",
+                                         today(), ".rds"))
+write_csv(sequenced_patient_data, paste0(path_save, "/processed data",
+                                         "/Identified breast data with re-classified sequenced sequential sample and chart review clinical_",
+                                         today(), ".csv"))
+
+# Save de-identified data
 deids_data <- sequenced_patient_data %>% 
   select(-c(mrn, sample_id, sample_family_id, Sample.Name..Secondary.,
             submitted_ID_for_added_samples, received_ID_for_added_samples,
@@ -147,12 +233,42 @@ deids_data <- sequenced_patient_data %>%
 
 write_csv(deids_data, 
           paste0(path_save, 
-                 "/processed data/De-identified breast data with re-classified sequenced sequential sample_", today(), ".csv"))
+                 "/processed data", 
+                 "/De-identified breast data with re-classified sequenced sequential sample and chart review clinical_", 
+                 today(), ".csv"))
 write_csv(deids_data, 
-          paste0("processed data/De-identified breast data with re-classified sequenced sequential sample_", 
+          paste0("processed data", 
+                 "/De-identified breast data with re-classified sequenced sequential sample and chart review clinical_", 
                  today(), ".csv"))
 
-# END re-classified samples ----
+
+# Patient without pre-sample CBC
+a <- sequenced_patient_data %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  select(mrn, overall_neutroplil_lab_result_at_presample, starts_with("lab_result_") & ends_with("_at_presample")) %>%
+  filter(if_all(any_of(c(contains("lab_result_"))), ~ is.na(.)))
+
+c <- sequenced_patient_data %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  select(mrn, 
+         lab_result_wbc_at_presample, lab_result_Hemoglobin_at_presample,
+         lab_result_Platelet.Count.k.uL._at_presample,
+         lab_result_mcv_at_presample, lab_result_rdw_at_presample,
+         overall_neutroplil_lab_result_at_presample
+         ) %>%
+  filter(if_any(any_of(c(contains("lab_result_"))), ~ is.na(.))) %>% 
+  filter(!str_detect(mrn, paste0(a$mrn, collapse = "|")
+                     )) %>% 
+  arrange(overall_neutroplil_lab_result_at_presample)
 
 
+b <- sequenced_patient_data %>% select(starts_with("lab_result_") & ends_with("_at_presample"))
+         
+write_csv(a, 
+          "breast patients with no pre sample cbc at all.csv")
+write_csv(c, 
+          "breast patients with at least 1 missing pre sample cbc arrange by anc.csv")
+
+
+# END Update clinical with chart review----
 
