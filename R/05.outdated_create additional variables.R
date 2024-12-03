@@ -8,11 +8,11 @@ path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzin
 
 sequenced_patient_data <- read.csv(paste0(# path_save,
   here::here(),
-  # "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.csv")) %>% 
+  "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.csv")) %>%
   mutate(mrn = as.character(mrn))
 sequenced_patient_data <- read_rds(paste0(
   here::here(),
-  # "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.rds"))
+  "/processed data/Identified breast data with re-classified sequenced sequential sample and clinical_2024-11-25.rds"))
 
 wbc <- read.csv(paste0(#path_save,
   here::here(),
