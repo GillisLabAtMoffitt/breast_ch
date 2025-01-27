@@ -35,11 +35,6 @@ treatment <-
                     sheet = "clean_all_treatments") %>% 
   janitor::clean_names()
 
-gcsf <- 
-  readxl::read_xlsx(paste0(path, "/raw_data/breast_sarcama_report_Yifen_April2023.xlsx"),
-                    sheet = "Medication") %>% 
-  janitor::clean_names()
-
 cbc <- 
   readxl::read_xlsx(paste0(path, "/raw_data/breast_sarcama_report_Yifen_April2023.xlsx"),
                     sheet = "CBC") %>% 

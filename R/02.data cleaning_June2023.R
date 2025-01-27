@@ -252,17 +252,6 @@ breast_patients_id <- paste0(breast_patients$mrn, collapse = "|")
 
 
 ################################################################################# IV ### Clean treatments
-# G-CSF----
-gcsf <- gcsf %>% 
-  distinct(patient_id, drug_catalog_nm) %>% 
-  group_by(patient_id) %>%
-  summarise_at(vars(drug_catalog_nm), 
-               str_c, collapse = "; ") %>% 
-  ungroup() %>% 
-  mutate(received_gcsf = "Received G-CSF") %>% 
-  select(patient_id, received_gcsf, gcsf_type = drug_catalog_nm)
-
-
 # CBC - neutropenia_at_anytime----
 wbc <- cbc %>% 
   filter(lab_nm == "WBC(k/uL)" & lab_unit == "k/uL") %>% 
@@ -666,7 +655,7 @@ treatment <- bind_rows(Chemot, Hormonet, Immnunot, Radiot) %>%
   mutate(treatment_line = row_number(patient_id)) %>%
   unite(treatment_line, c(treatment_type, treatment_line), sep = "_", remove = FALSE) %>% 
   ungroup()
-write_rds(treatment, "treatment_11142023.rds")
+# write_rds(treatment, "treatment_11142023.rds")
 
 Treatment <- full_join(chemot, hormonet, by = "patient_id") %>% 
   full_join(., immnunot, by = "patient_id") %>% 
@@ -688,7 +677,7 @@ Treatment <- full_join(chemot, hormonet, by = "patient_id") %>%
   #     !is.na(radiation_start_date) ~ "Yes"
   # ))
 
-write_rds(Treatment, "Treatment_06272023.rds")
+# write_rds(Treatment, "Treatment_06272023.rds")
 
 
 
@@ -700,17 +689,16 @@ write_rds(Treatment, "Treatment_06272023.rds")
 Global_data <- 
   left_join(breast_patients, Treatment, by = "patient_id") %>% 
   # left_join(., ERPRHER, by = "mrn") %>% 
-  full_join(., gcsf, by = "patient_id") %>% 
   full_join(., wbc, by = "patient_id")
 
 
-write_rds(Global_data, "Global_data_06272023.rds")
+# write_rds(Global_data, "Global_data_06272023.rds")
 
 blood_patients <- Global_data %>% 
   # filter to patients who have blood samples
   filter(!is.na(specimen_collection_dt))
 
-write_rds(blood_patients, "blood_patients_06272023.rds")
+# write_rds(blood_patients, "blood_patients_06272023.rds")
 
 
 # End cleaning

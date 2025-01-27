@@ -143,7 +143,8 @@ sequenced_patients <- later_blood_patients %>%
          metastatic_site_at_diagnosis_desc, 
          type_of_first_recurrence_desc,
          new_vital_status, new_last_date, smoking_status,
-         received_gcsf, gcsf_type, neutropenia_at_anytime,
+         # received_gcsf, gcsf_type, 
+         neutropenia_at_anytime,
          ssf1_nm : progesterone_receptor_total_allred_score_desc,
          ER_results, PR_results, HER_results, 
          ER_PR_status, ER_PR_HER_status
@@ -264,7 +265,8 @@ sequenced_patient_data <- sequenced_patients %>%
 # Update survival and other clinical with chart review----
 sequenced_patient_data <- chart_dat %>% 
   # Select 1 clinical row for each patient
-  select(mrn, first_treatment_h_end_date,
+  select(mrn, chemo1_end_date1_1,
+         first_treatment_h_end_date,
          smoking_status : oncotype_dx,
          dead_or_alive,
          date_of_last_followup, 
@@ -287,9 +289,12 @@ sequenced_patient_data <- chart_dat %>%
               )), 
             ., 
             by = "mrn") %>% 
-  mutate(chart_reviewed_chemotherapy_end_date_1 = first_treatment_h_end_date,
+  mutate(chart_reviewed_chemotherapy_end_date_1 = chemo1_end_date1_1,
          .after = chemotherapy_end_date1_1) %>% 
-  select(-c(first_treatment_h_end_date, chemotherapy_end_date1_1))
+  mutate(chart_reviewed_end_date_of_first_corresponding_treatment = first_treatment_h_end_date,
+         .after = chemo1_end_date1_1) %>% 
+  select(-c(first_treatment_h_end_date, chemo1_end_date1_1,
+            chemotherapy_end_date1_1))
 
 
 # Save re-classified sequenced sequential sample and chart review clinical data

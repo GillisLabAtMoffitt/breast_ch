@@ -9,10 +9,11 @@ path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzin
 sequenced_patient_data <- read_rds(paste0(
   here::here(),
   "/processed data",
-  "/Identified breast data with re-classified sequenced sequential sample and chart review primary clinical_2024-12-03.rds"))
+  "/Identified breast data with re-classified sequenced sequential sample and chart review primary clinical_2024-12-17.rds"))
 
 subsequent_cancer <-
   read_csv(paste0(here::here(), "/processed data/patient subsequent cancer after breast cancer - hossein.csv"))
+
 
 ############################################################ II ### Adding de-identified and extra variables----
 # summarize subsequent cancer
@@ -72,7 +73,7 @@ sequenced_patient_data <- sequenced_patient_data %>%
       duration(n = 1, units = "days")
   )) %>% 
   mutate(days_from_chemo_start_to_radiation = case_when(
-    treatment_type == "chemorad"           ~ interval(start = chart_reviewed_chemotherapy_end_date_1,
+    treatment_type == "chemorad"           ~ interval(start = chemotherapy_start_date_1,
                                                       end = radiation_start_date_1)/
       duration(n = 1, units = "days")
   )) %>%
@@ -131,6 +132,7 @@ sequenced_patient_data <- sequenced_patient_data %>%
          sample_treatment_sequence = time_to_treatment, 
          sequence_sample_vs_treatment, treatment_received,
          date_of_first_corresponding_treatment,
+         chart_reviewed_end_date_of_first_corresponding_treatment,
          age_at_first_treatment, age_at_first_chemo,
          age_at_first_hormone, age_at_first_radiation,
          days_from_treatment_start_to_sample_collection,
@@ -160,7 +162,7 @@ sequenced_patient_data <- sequenced_patient_data %>%
          ln_positive_axillary_level_i_ii,
          contains("multigene_signature"),
          contains("ssf"),
-         received_gcsf, gcsf_type, 
+         # received_gcsf, gcsf_type, 
          neutropenia_at_anytime,
          # Demo
          date_of_birth,
