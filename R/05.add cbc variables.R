@@ -368,31 +368,5 @@ write_csv(deids_data,
                  today(), ".csv"))
 
 
-# Cytopenia----
-
-
-use copy of 05
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # END Create new variable - (with CBC)
 
