@@ -543,6 +543,12 @@ rm(temp, hgb, plt, anc,
    deids_data)
 
 # NADIR----
+temp <- sequenced_patient_data %>% 
+  select(mrn, 
+         date_of_first_corresponding_treatment) %>% 
+  distinct() %>% 
+  mutate(date_of_first_corresponding_treatment = as.POSIXct(date_of_first_corresponding_treatment))
+
 chart_dat <- chart_dat %>% 
   mutate(mrn = as.character(mrn)) %>% 
   select(mrn, 
@@ -582,12 +588,6 @@ chart_dat <- chart_dat %>%
          starts_with("wbc_nadir"),
          starts_with("rbc_nadir"),
          starts_with("hgb_nadir"))
-
-temp <- sequenced_patient_data %>% 
-  select(mrn, 
-         date_of_first_corresponding_treatment) %>% 
-  distinct() %>% 
-  mutate(date_of_first_corresponding_treatment = as.POSIXct(date_of_first_corresponding_treatment))
 
 cbc1 <- cbc %>% 
   select(patient_id, lab_nm, lab_result, lab_unit, lab_date) %>% 
