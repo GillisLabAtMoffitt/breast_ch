@@ -89,19 +89,30 @@ drug_dose1 <- drug_dose %>%
     pre_to_last_sample == "Yes"                         ~ sum(dose_mg_per_m2)
   )) %>% 
   ungroup() %>% 
-  select(mrn, chemotherapy_drug, general_drug_class,
+  select(mrn, chemotherapy_drug, narrow_drug_class_cytotoxic_only, 
          cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample) %>% 
   arrange(mrn, chemotherapy_drug, 
           cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample) %>% 
   distinct(mrn, chemotherapy_drug, .keep_all = TRUE) %>% 
   # create tertile categories
   group_by(chemotherapy_drug) %>% 
-  # mutate(n = n()) %>% 
+  # mutate(n = n()) %>%
+  # mutate(tertile_pre_firstseqsample = ntile(cumulative_dose_pre_firstseqsample, 3))
   mutate(tertile_pre_firstseqsample = case_when(
-    n() > 1                                             ~ ntile(cumulative_dose_pre_firstseqsample, 3)
+    n() > 2                                             ~ ntile(cumulative_dose_pre_firstseqsample, 3),
+    n() == 1 &
+      chemotherapy_drug == "abraxane"                   ~ 1,
+    n() == 2 &
+      chemotherapy_drug %in% 
+      c("epirubicin", "fluorouracil")                   ~ 2
   )) %>% 
   mutate(tertile_pre_lastseqsample = case_when(
-    n() > 1                                             ~ ntile(cumulative_dose_pre_lastseqsample, 3)
+    n() > 2                                             ~ ntile(cumulative_dose_pre_lastseqsample, 3),
+    n() == 1 &
+      chemotherapy_drug == "abraxane"                   ~ 1,
+    n() == 2 &
+      chemotherapy_drug %in% 
+      c("epirubicin", "fluorouracil")                   ~ 2
   )) %>% 
   # mutate(tertile_cum_drug_cat = case_when(
   #   n() > 1 &
@@ -113,37 +124,62 @@ drug_dose1 <- drug_dose %>%
   # )) %>% 
   
   # calculate score - sum scores for each drug in a specific drug class
-  group_by(mrn, general_drug_class) %>% 
-  mutate(drug_class_score_pre_firstseqsample = sum(tertile_pre_firstseqsample, na.rm = TRUE)) %>% 
-  mutate(drug_class_score_pre_lastseqsample = sum(tertile_pre_lastseqsample, na.rm = TRUE)) %>% 
-  distinct(mrn, general_drug_class, .keep_all = TRUE) %>% 
-  # group_by(general_drug_class) %>% 
+  group_by(mrn, narrow_drug_class_cytotoxic_only) %>% 
+  # mutate(n = n()) %>%
+  mutate(drug_class_score_pre_firstseqsample = case_when(
+    !is.na(tertile_pre_firstseqsample)                  ~ sum(tertile_pre_firstseqsample, na.rm = TRUE)
+  )) %>% 
+  mutate(drug_class_score_pre_lastseqsample = case_when(
+    !is.na(tertile_pre_lastseqsample)                   ~ sum(tertile_pre_lastseqsample, na.rm = TRUE)
+  )) %>% 
+  distinct(mrn, narrow_drug_class_cytotoxic_only, .keep_all = TRUE) %>% 
+  select(-chemotherapy_drug) %>% 
+  # group_by(narrow_drug_class_cytotoxic_only) %>%
   # mutate(n = n()) %>% 
-  # mutate(tertile_class = case_when(
-  #   n() > 1                                             ~ ntile(drug_class_score, 3)
-  # )) %>%
-  # # calculate score - tertile for a general_drug_class
-  # mutate(drug_class_score_cat = case_when(
-  #   n() > 1 &
-  #     ntile(floor(drug_class_score), 3) == 1                   ~ "Low",
-  #   n() > 1 &
-  #     ntile(floor(drug_class_score), 3) == 2                   ~ "Medium",
-  #   n() > 1 &
-  #     ntile(floor(drug_class_score), 3) == 3                   ~ "High",
-  # )) %>% 
+  # Bolton summed score
+  group_by(mrn, narrow_drug_class_cytotoxic_only) %>% 
+  mutate(sum_bolton_drug_score_pre_firstseqsample_per_class_patient = case_when(
+    !is.na(drug_class_score_pre_firstseqsample)         ~ sum(drug_class_score_pre_firstseqsample, na.rm = TRUE)
+  )) %>% 
+  mutate(sum_bolton_drug_score_pre_lastseqsample_per_class_patient = case_when(
+    !is.na(drug_class_score_pre_lastseqsample)          ~ sum(drug_class_score_pre_lastseqsample, na.rm = TRUE)
+  )) %>% 
+  # Patient's
+  group_by(mrn) %>% 
+  mutate(sum_all_drug_score_pre_firstseqsample_per_patient = case_when(
+    !is.na(drug_class_score_pre_firstseqsample)         ~ sum(drug_class_score_pre_firstseqsample, na.rm = TRUE)
+  )) %>% 
+  mutate(sum_all_drug_score_pre_lastseqsample_per_patient = case_when(
+    !is.na(drug_class_score_pre_lastseqsample)          ~ sum(drug_class_score_pre_lastseqsample, na.rm = TRUE)
+  )) %>% 
   ungroup() %>% 
-  # use cut() instead of ntile() to get the ties in values
-  mutate(tertile_class_pre_firstseqsample = cut(drug_class_score_pre_firstseqsample,
-                             breaks = quantile(drug_class_score_pre_firstseqsample, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+  # # use cut() instead of ntile() to attribute the ties in values
+  mutate(tertile_patient_pre_firstseqsample = cut(sum_all_drug_score_pre_firstseqsample_per_patient,
+                             breaks = quantile(sum_all_drug_score_pre_firstseqsample_per_patient, 
+                                               probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
                              include.lowest = TRUE,
-                             labels = c("Low", "Medium", "High"))) %>% 
-  mutate(tertile_class_pre_lastseqsample = cut(drug_class_score_pre_lastseqsample,
-                                                breaks = quantile(drug_class_score_pre_lastseqsample, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                             labels = c("Low", "Medium", "High"))) %>%
+  mutate(tertile_patient_pre_lastseqsample = cut(sum_all_drug_score_pre_lastseqsample_per_patient,
+                                                breaks = quantile(sum_all_drug_score_pre_lastseqsample_per_patient, 
+                                                                  probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
                                                 include.lowest = TRUE,
                                                 labels = c("Low", "Medium", "High"))) %>% 
-  select(mrn, general_drug_class, tertile_class_pre_firstseqsample, 
-         tertile_class_pre_lastseqsample, drug_class_score_pre_firstseqsample, drug_class_score_pre_lastseqsample)
-
+  full_join(sequenced_patient_data %>% 
+              select(mrn, deidentified_patient_id) %>% 
+              distinct() %>% 
+              mutate(mrn = as.character(mrn)), 
+            ., 
+            by = "mrn") %>% 
+  select(mrn, deidentified_patient_id, narrow_drug_class_cytotoxic_only, 
+         sum_bolton_drug_score_pre_firstseqsample_per_class_patient, 
+         sum_bolton_drug_score_pre_lastseqsample_per_class_patient,
+         sum_all_drug_score_pre_firstseqsample_per_patient,
+         tertile_patient_pre_firstseqsample,
+         sum_all_drug_score_pre_lastseqsample_per_patient,
+         tertile_patient_pre_lastseqsample
+         ) %>% 
+  filter(!is.na(narrow_drug_class_cytotoxic_only))
+  
 
 write_csv(drug_dose1, 
           paste0(here::here(), 
@@ -159,6 +195,12 @@ write_csv(drug_dose1,
           paste0(path_save, 
                  "/processed data",
                  "/Cumulative dose score_",
+                 today(), ".csv"))
+write_csv(drug_dose1 %>% 
+            select(-mrn), 
+          paste0(path_save, 
+                 "/processed data",
+                 "/De-identified Cumulative dose score_",
                  today(), ".csv"))
 
 
