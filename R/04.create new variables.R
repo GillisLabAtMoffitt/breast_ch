@@ -96,6 +96,8 @@ sequenced_patient_data <- sequenced_patient_data %>%
   )) %>% 
   # Survival----
   # OS
+  # dead_or_alive variable is the last updated status that Danny collected,
+  # Same for date_of_last_followup (it includes date of death)
   mutate(os_event = case_when(
     dead_or_alive == "Alive"            ~ 0,
     dead_or_alive == "Dead"             ~ 1

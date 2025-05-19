@@ -123,7 +123,14 @@ sequenced_patient_data <- sequenced_patient_data %>%
     treatment_type == "chemorad"           ~ chart_reviewed_chemotherapy_end_date_1,
     treatment_type == "hormone"            ~ hormone_therapy_end_date1_1,
     treatment_type == "radiation"          ~ radiation_end_date1
-  ))
+  )) %>% 
+  # update PFS
+  mutate(pfs_event = case_when(
+    !is.na(progression_type)            ~ 1,
+    !is.na(date_of_progression)         ~ 1,
+    dead_or_alive == "Dead"             ~ 1,
+    is.na(progression_type)             ~ 0
+  ), .after = progression_type)
 
   
 ############################################################ IV ### Code NADIR and Cytopenia----
