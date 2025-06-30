@@ -17,6 +17,7 @@
 *.xlsx
 *.pdf
 *.rds
+*.zip
 
 # Rmd and pptx
 *.pptx
