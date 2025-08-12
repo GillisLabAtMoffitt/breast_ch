@@ -57,7 +57,8 @@ data_merge <- data %>%
               distinct(deidentified_patient_id, .keep_all = TRUE),
             by = join_by(deidentified_patient_id)) %>% 
   left_join(., drug_tertile %>% 
-              select(deidentified_patient_id, tertile_patient_pre_firstseqsample) %>% 
+              select(deidentified_patient_id, tertile_patient_pre_firstseqsample) %>%
+              filter(!is.na(tertile_patient_pre_firstseqsample)) %>% 
               distinct(deidentified_patient_id, .keep_all = TRUE),
             by = join_by(deidentified_patient_id))
 ```
