@@ -1,0 +1,1271 @@
+---
+title: "Additional analysis"
+author: "Christelle Colin-Leitzinger"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+    code_folding: hide
+  word_document:
+    toc: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library, echo = FALSE}
+library(tidyverse)
+library(gtsummary)
+library(survminer)
+library(survival)
+theme_gtsummary_compact()
+theme_set(theme_classic())
+```
+
+```{r load}
+data <- 
+  readxl::read_xlsx(paste0(here::here(), 
+                           "/sample_status.xlsx"))
+sequenced_patient_data <- read_rds(paste0(
+  here::here(),
+  "/processed data",
+  "/Identified breast data_2025-06-30.rds"))
+
+drug_tertile <- read_rds(paste0(
+  here::here(),
+  "/processed data",
+  "/Cumulative dose score_2025-05-06.rds"))
+```
+
+```{r merge}
+data_merge <- data %>% 
+  mutate(deidentified_patient_id = paste0("breast_study_", sampleID)) %>% 
+  left_join(., sequenced_patient_data %>% 
+              distinct(deidentified_patient_id, .keep_all = TRUE),
+            by = join_by(deidentified_patient_id)) %>% 
+  left_join(., drug_tertile %>% 
+              select(deidentified_patient_id, tertile_patient_pre_firstseqsample) %>% 
+              distinct(deidentified_patient_id, .keep_all = TRUE),
+            by = join_by(deidentified_patient_id))
+```
+
+```{r cleaning}
+data_merge <- data_merge %>% 
+  mutate(tnm_stage = case_when(
+    str_detect(tnm_stage, "0")       ~ "0",
+    str_detect(tnm_stage, "1")       ~ "1",
+    str_detect(tnm_stage, "2")       ~ "2",
+    str_detect(tnm_stage, "3")       ~ "3",
+    str_detect(tnm_stage, "4")       ~ "4",
+    str_detect(tnm_stage, "99")      ~ NA_character_,
+    TRUE                             ~ tnm_stage
+  )) %>% 
+  mutate(tnm_stage_cat = case_when(
+    tnm_stage == "0" |
+    tnm_stage == "1" |
+    tnm_stage == "2"                 ~ "Early stage",
+    tnm_stage == "3" |
+    tnm_stage == "4"                 ~ "Late stage",
+    TRUE                             ~ tnm_stage
+  ), tnm_stage_cat = factor(tnm_stage_cat, levels = c("Early stage", "Late stage"))) %>% 
+  mutate_at(c("er", "pr", "her2"), ~ factor(., levels = c("neg", "pos"))) %>% 
+  mutate(status_CH = factor(status_CH, levels = c("noCH", "CH"))) %>% 
+  mutate(cond = case_when(
+    status_selection == "NegativeSelection"      ~ "Neg/Not impacted",
+    status_selection == "NotChanged"             ~ "Neg/Not impacted",
+    status_selection == "PositiveSelection"      ~ "Pos"
+  ), cond = factor(cond, levels = c("Neg/Not impacted", "Pos"))) %>% 
+  
+  mutate(her2 = case_when(
+    str_detect(deidentified_patient_id, "007422")      ~ "neg",
+    TRUE                                               ~ her2
+  ))
+  
+# write_rds(data_merge %>% 
+#             select(deidentified_patient_id, 
+#                    age_at_sample, tnm_stage, tnm_stage_cat,
+#                    er, pr, her2, status_CH, status_selection, cond, 
+#                    os_event, os_time_from_tx_start_months, pfs_event, pfs_time_months), 
+#           "data_meerge_updated.rds")
+```
+
+# I. OS Overall population
+## 1. Summary 
+```{r Clinical table}
+data_merge %>% 
+  select(age_at_sample, tnm_stage, tnm_stage_cat,
+         er, pr, her2, status_CH, status_selection, cond,
+         tertile_patient_pre_firstseqsample) %>% 
+  mutate(age_cat = case_when(
+    age_at_sample < 40         ~ "20-39",
+    age_at_sample < 50          ~ "40-49",
+    age_at_sample < 60          ~ "50-59",
+    age_at_sample >= 60          ~ "60-80",
+  )) %>% 
+  tbl_summary() %>% 
+  bold_labels()
+```
+
+## 2. Hazard ratios and 95% confidence intervals
+```{r}
+tbl1 <- tbl_uvregression(
+  data_merge,
+  method = coxph,
+  y = Surv(time = os_time_from_tx_start_months, event = os_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", #"status_CH",
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
+                   event = data_merge$os_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + #status_CH +
+                tertile_patient_pre_firstseqsample,
+              data = data_merge)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>% 
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**")
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+```{r}
+tbl1 <- tbl_uvregression(
+  data_merge,
+  method = coxph,
+  y = Surv(time = os_time_from_tx_start_months, event = os_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond",
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
+                   event = data_merge$os_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + cond +
+                tertile_patient_pre_firstseqsample,
+              data = data_merge)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>% 
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**")
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+## 3. KM
+```{r Survival, fig.height = 7}
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ tertile_patient_pre_firstseqsample,
+                   data=data_merge),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# II. OS Non-CH subset
+```{r}
+non_ch_subset <- data_merge %>% 
+  mutate(status_selection = factor(status_selection)) %>% 
+  filter(status_CH == "noCH")
+```
+
+## 1. Summary 
+```{r Clinical table non_ch_subset}
+non_ch_subset %>% 
+  select(age_at_sample, tnm_stage, tnm_stage_cat, 
+         er, pr, her2, status_CH, status_selection, cond,
+         tertile_patient_pre_firstseqsample) %>% 
+  tbl_summary() %>% 
+  bold_labels()
+```
+
+## 2. Hazard ratios and 95% confidence intervals
+```{r HR non_ch_subset}
+tbl1 <- tbl_uvregression(
+  non_ch_subset,
+  method = coxph,
+  y = Surv(time = os_time_from_tx_start_months, event = os_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", #"cond",
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = non_ch_subset$os_time_from_tx_start_months,
+                   event = non_ch_subset$os_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + #cond +
+                tertile_patient_pre_firstseqsample,
+              data = non_ch_subset)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+## 3. KM
+```{r Survival non_ch_subset, fig.height = 7}
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ tertile_patient_pre_firstseqsample,
+                   data=non_ch_subset),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# III. PFS Overall population
+
+## 1. Hazard ratios and 95% confidence intervals
+```{r PFS}
+tbl1 <- tbl_uvregression(
+  data_merge,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", #"status_CH", 
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
+                   event = data_merge$pfs_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + #status_CH +
+                tertile_patient_pre_firstseqsample,
+              data = data_merge)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+```{r}
+tbl1 <- tbl_uvregression(
+  data_merge,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond", 
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
+                   event = data_merge$pfs_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + cond +
+                tertile_patient_pre_firstseqsample,
+              data = data_merge)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+## 2. KM
+The KM are not ajusted
+```{r Survival PFS, fig.height = 7}
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ tertile_patient_pre_firstseqsample,
+                   data=data_merge),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# IV. PFS Non-CH subset
+
+## 1. Hazard ratios and 95% confidence intervals
+```{r HR PFS non_ch_subset}
+tbl1 <- tbl_uvregression(
+  non_ch_subset,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", #"cond",
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  # add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = non_ch_subset$pfs_time_months,
+                   event = non_ch_subset$pfs_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + #cond +
+              tertile_patient_pre_firstseqsample,
+              data = non_ch_subset)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+## 2. KM
+```{r PFS non_ch_subset, fig.height = 7}
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ tertile_patient_pre_firstseqsample,
+                   data=non_ch_subset),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# V. Selection stratification - KM OS
+## 1. Neg/Not impacted selection
+```{r}
+neg_selection <- data_merge %>% 
+  filter(cond == "Neg/Not impacted")
+
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ tertile_patient_pre_firstseqsample,
+                   data=neg_selection),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+
+## 2. Positive selection
+```{r}
+pos_selection <- data_merge %>% 
+  filter(cond == "Pos")
+
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ tertile_patient_pre_firstseqsample,
+                   data=pos_selection),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# VI. Selection stratification - KM PFS
+## 1. Neg/Not impacted selection
+```{r}
+neg_selection <- data_merge %>% 
+  filter(cond == "Neg/Not impacted")
+
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ tertile_patient_pre_firstseqsample,
+                   data=neg_selection),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+
+## 2. Positive selection
+```{r}
+pos_selection <- data_merge %>% 
+  filter(cond == "Pos")
+
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ tertile_patient_pre_firstseqsample,
+                   data=pos_selection),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+# VII. Investigate homogenous patient group
+```{r redo drug class but keeping drug name in it}
+path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
+                     "Breast_R01", "sequential_samples_hossein")
+drug_dose <- 
+  readxl::read_xlsx(paste0(
+    path_raw, 
+    "/raw_data/Chemo_patient_MRN_chemotherapy_drug_04.02.2025 1.xlsx"),
+    sheet = "Normalized") %>% 
+  janitor::clean_names()
+
+sample_dates <- 
+  readxl::read_xlsx(paste0(
+    path_raw, 
+    "/raw_data/Chemo_patient_MRN_chemotherapy_drug_04.02.2025 1.xlsx"),
+    sheet = "Chemo_patient_MRN_chemotherapy_") %>% 
+  janitor::clean_names()
+
+drug_class <- 
+  readxl::read_xlsx(paste0(
+    path_raw, 
+    "/raw_data/Bolton_Supp Tables.xlsx"),
+    sheet = "Sup. Table 1", skip = 1) %>% 
+  janitor::clean_names()
+
+path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzinger", 
+                      "Breast CH", "sequential_samples_hossein")
+
+sequenced_patient_data <- 
+  read_csv(paste0(# path_save, 
+    here::here(), 
+    "/processed data",
+    "/Identified breast data with sequenced sequential sample and clinical-CBC-Cytopenia-NADIR_2025-03-31.csv"))
+
+
+############################################################ II ### Cumulative doses----
+sample_dates <- sample_dates %>% 
+  select(mrn, pre_sample_collection_date, last_post_sample_collection_date) %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  mutate_at(c("pre_sample_collection_date", "last_post_sample_collection_date"), ~ as.Date(., origin = "1899-12-30")) %>% 
+  left_join(., sequenced_patient_data %>% 
+              # select(mrn, treatment_type, seqsample_date_chemo, seqsample_date_rad, 
+              #        seqsample_date_Achemo, seqsample_date_hormone) %>% 
+              group_by(mrn) %>% 
+              fill(seqsample_date_chemo, seqsample_date_rad, 
+                   seqsample_date_Achemo, seqsample_date_hormone, .direction = "updown") %>% 
+              distinct(mrn, .keep_all = TRUE) %>% 
+              mutate(date_of_first_seq_sample = case_when(
+                treatment_type == "chemo"              ~ seqsample_date_chemo,
+                treatment_type == "chemorad"           ~ seqsample_date_Achemo,
+                treatment_type == "hormone"            ~ seqsample_date_hormone,
+                treatment_type == "radiation"          ~ seqsample_date_rad
+              )) %>% 
+              select(mrn, date_of_first_seq_sample),
+            by = "mrn") %>% 
+  mutate(mrn = as.character(mrn))
+  
+drug_dose1 <- drug_dose %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  left_join(., sample_dates, by = "mrn") %>% 
+  mutate(pre_to_first_sample = case_when(
+    date >= pre_sample_collection_date &
+      date <= date_of_first_seq_sample                  ~ "Yes"
+  )) %>% 
+  mutate(pre_to_last_sample = case_when(
+    date >= pre_sample_collection_date &
+      date <= last_post_sample_collection_date          ~ "Yes"
+  )) %>% 
+  # fix drug name and add class
+  mutate(chemotherapy_drug = case_when(
+    chemotherapy_drug == "5 fu"                         ~ "fluorouracil",
+    chemotherapy_drug == "adriamycin"                   ~ "doxorubicin",
+    chemotherapy_drug == "abraxane (form of taxol)"     ~ "abraxane",
+    TRUE                                                ~ chemotherapy_drug
+  )) %>% 
+  # add 
+  left_join(., drug_class, 
+            by = c("chemotherapy_drug" = "drug_name")) %>% 
+  # calculate cumulative dose per patient per drug
+  group_by(mrn, chemotherapy_drug, pre_to_first_sample) %>% 
+  mutate(cumulative_dose_pre_firstseqsample = case_when(
+    pre_to_first_sample == "Yes"                        ~ sum(dose_mg_per_m2)
+  )) %>% 
+  group_by(mrn, chemotherapy_drug, pre_to_last_sample) %>% 
+  mutate(cumulative_dose_pre_lastseqsample = case_when(
+    pre_to_last_sample == "Yes"                         ~ sum(dose_mg_per_m2)
+  )) %>% 
+  ungroup() %>% 
+  select(mrn, chemotherapy_drug, narrow_drug_class_cytotoxic_only, 
+         cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample) %>% 
+  arrange(mrn, chemotherapy_drug, 
+          cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample) %>% 
+  distinct(mrn, chemotherapy_drug, .keep_all = TRUE) %>% 
+  # create tertile categories
+  # group_by(chemotherapy_drug) %>% 
+  # # mutate(n = n()) %>%
+  # # mutate(tertile_pre_firstseqsample = ntile(cumulative_dose_pre_firstseqsample, 3))
+  # mutate(tertile_pre_firstseqsample = case_when(
+  #   n() > 2                                             ~ ntile(cumulative_dose_pre_firstseqsample, 3),
+  #   n() == 1 &
+  #     chemotherapy_drug == "abraxane"                   ~ 1,
+  #   n() == 2 &
+  #     chemotherapy_drug %in% 
+  #     c("epirubicin", "fluorouracil")                   ~ 2
+  # )) %>% 
+  # mutate(tertile_pre_lastseqsample = case_when(
+  #   n() > 2                                             ~ ntile(cumulative_dose_pre_lastseqsample, 3),
+  #   n() == 1 &
+  #     chemotherapy_drug == "abraxane"                   ~ 1,
+  #   n() == 2 &
+  #     chemotherapy_drug %in% 
+  #     c("epirubicin", "fluorouracil")                   ~ 2
+  # )) %>% 
+  # # mutate(tertile_cum_drug_cat = case_when(
+  # #   n() > 1 &
+  # #     ntile(cumulative_dose, 3) == 1                    ~ "Low",
+  # #   n() > 1 &
+  # #     ntile(cumulative_dose, 3) == 2                    ~ "Medium",
+  # #   n() > 1 &
+  # #     ntile(cumulative_dose, 3) == 3                    ~ "High",
+  # # )) %>% 
+  # 
+  # # calculate score - sum scores for each drug in a specific drug class
+  # group_by(mrn, narrow_drug_class_cytotoxic_only) %>% 
+  # # mutate(n = n()) %>%
+  # mutate(drug_class_score_pre_firstseqsample = case_when(
+  #   !is.na(tertile_pre_firstseqsample)                  ~ sum(tertile_pre_firstseqsample, na.rm = TRUE)
+  # )) %>% 
+  # mutate(drug_class_score_pre_lastseqsample = case_when(
+  #   !is.na(tertile_pre_lastseqsample)                   ~ sum(tertile_pre_lastseqsample, na.rm = TRUE)
+  # )) %>% 
+  # distinct(mrn, narrow_drug_class_cytotoxic_only, .keep_all = TRUE) %>% 
+  # # select(-chemotherapy_drug) %>% 
+  # # group_by(narrow_drug_class_cytotoxic_only) %>%
+  # # mutate(n = n()) %>% 
+  # # Bolton summed score
+  # group_by(mrn, narrow_drug_class_cytotoxic_only) %>% 
+  # mutate(sum_bolton_drug_score_pre_firstseqsample_per_class_patient = case_when(
+  #   !is.na(drug_class_score_pre_firstseqsample)         ~ sum(drug_class_score_pre_firstseqsample, na.rm = TRUE)
+  # )) %>% 
+  # mutate(sum_bolton_drug_score_pre_lastseqsample_per_class_patient = case_when(
+  #   !is.na(drug_class_score_pre_lastseqsample)          ~ sum(drug_class_score_pre_lastseqsample, na.rm = TRUE)
+  # )) %>% 
+  # # Patient's
+  # group_by(mrn) %>% 
+  # mutate(sum_all_drug_score_pre_firstseqsample_per_patient = case_when(
+  #   !is.na(drug_class_score_pre_firstseqsample)         ~ sum(drug_class_score_pre_firstseqsample, na.rm = TRUE)
+  # )) %>% 
+  # mutate(sum_all_drug_score_pre_lastseqsample_per_patient = case_when(
+  #   !is.na(drug_class_score_pre_lastseqsample)          ~ sum(drug_class_score_pre_lastseqsample, na.rm = TRUE)
+  # )) %>% 
+  # ungroup() %>% 
+  # # # use cut() instead of ntile() to attribute the ties in values
+  # mutate(tertile_patient_pre_firstseqsample = cut(sum_all_drug_score_pre_firstseqsample_per_patient,
+  #                            breaks = quantile(sum_all_drug_score_pre_firstseqsample_per_patient, 
+  #                                              probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+  #                            include.lowest = TRUE,
+  #                            labels = c("Low", "Medium", "High"))) %>%
+  # mutate(tertile_patient_pre_lastseqsample = cut(sum_all_drug_score_pre_lastseqsample_per_patient,
+  #                                               breaks = quantile(sum_all_drug_score_pre_lastseqsample_per_patient, 
+  #                                                                 probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+  #                                               include.lowest = TRUE,
+  #                                               labels = c("Low", "Medium", "High"))) %>% 
+  full_join(sequenced_patient_data %>%
+              select(mrn, deidentified_patient_id) %>%
+              distinct() %>%
+              mutate(mrn = as.character(mrn)),
+            .,
+            by = "mrn") #%>%
+  # # select(mrn, deidentified_patient_id, narrow_drug_class_cytotoxic_only, 
+  # #        sum_bolton_drug_score_pre_firstseqsample_per_class_patient, 
+  # #        sum_bolton_drug_score_pre_lastseqsample_per_class_patient,
+  # #        sum_all_drug_score_pre_firstseqsample_per_patient,
+  # #        tertile_patient_pre_firstseqsample,
+  # #        sum_all_drug_score_pre_lastseqsample_per_patient,
+  # #        tertile_patient_pre_lastseqsample
+  # #        ) %>% 
+  # filter(!is.na(narrow_drug_class_cytotoxic_only))
+
+# Make regimen
+drug_summary <- drug_dose1 %>% 
+  select(deidentified_patient_id, 
+         chemotherapy_drug, narrow_drug_class_cytotoxic_only) %>% 
+  group_by(deidentified_patient_id) %>% 
+  summarise_at(vars(chemotherapy_drug, narrow_drug_class_cytotoxic_only), 
+               str_c, collapse = "; ")
+```
+
+```{r}
+drug_dose_dat <- data_merge %>% 
+  left_join(., drug_summary, by = c("deidentified_patient_id")) 
+
+drug_dose_dat %>% 
+  select(tertile_patient_pre_firstseqsample, 
+         chemotherapy_drug, 
+         tertile_patient_pre_firstseqsample) %>% 
+  tbl_summary(by = tertile_patient_pre_firstseqsample,
+              sort = list(everything() ~ "frequency")) %>% 
+  bold_labels()
+```
+
+## 1. cyclophosphamide; docetaxel
+```{r}
+cyclo_doce <- drug_dose_dat %>% 
+  filter(chemotherapy_drug == "cyclophosphamide; docetaxel")
+
+tbl1 <- tbl_uvregression(
+  cyclo_doce,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond", 
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
+                   event = cyclo_doce$pfs_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + cond +
+                tertile_patient_pre_firstseqsample,
+              data = cyclo_doce)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ cond,
+                   data=cyclo_doce),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ cond,
+                   data=cyclo_doce),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+## 2. cyclophosphamide; docetaxel & Low tertile 
+```{r}
+cyclo_doce <- drug_dose_dat %>% 
+  filter(chemotherapy_drug == "cyclophosphamide; docetaxel" & 
+           tertile_patient_pre_firstseqsample == "Low")
+
+tbl1 <- tbl_uvregression(
+  cyclo_doce,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
+                   event = cyclo_doce$pfs_event) ~ age_at_sample + tnm_stage_cat + 
+                er + pr + her2 + cond,
+              data = cyclo_doce)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  # 
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>% 
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable**", 
+                          "**Multivariable**"))
+```
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ cond,
+                   data=cyclo_doce),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ cond,
+                   data=cyclo_doce),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+## 3. cyclophosphamide; doxorubicin; paclitaxel
+```{r}
+cyclo_dox_pac <- drug_dose_dat %>%
+  filter(chemotherapy_drug == "cyclophosphamide; doxorubicin; paclitaxel")
+
+tbl1 <- tbl_uvregression(
+  cyclo_dox_pac,
+  method = coxph,
+  y = Surv(time = pfs_time_months, event = pfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond",
+              "tertile_patient_pre_firstseqsample"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  #
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = cyclo_dox_pac$pfs_time_months,
+                   event = cyclo_dox_pac$pfs_event) ~ age_at_sample + tnm_stage_cat +
+                er + pr + her2 + #cond +
+                tertile_patient_pre_firstseqsample,
+              data = cyclo_dox_pac)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  # modify_table_styling(
+  #   columns = conf.low,
+  #   rows = reference_row %in% TRUE,
+  #   missing_symbol = "Reference"
+  # ) %>%
+  # modify_column_merge(
+  #   pattern = "{stat_n} ({stat_nevent})",
+  #   rows = !is.na(stat_nevent)
+  # ) %>%
+  # modify_header(stat_n = "**N (Event N)**") %>%
+  #
+  # modify_column_merge(
+  #   pattern = "{estimate} ({conf.low}, {conf.high})",
+  #   rows = !is.na(estimate)
+  # ) %>%
+  # modify_header(estimate = "**HR (95% CI)**") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2),
+          tab_spanner = c("**Univariable**",
+                          "**Multivariable**"))
+```
+
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ cond,
+                   data=cyclo_dox_pac),
+           title = "OS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+
+```{r, fig.height = 7}
+ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ cond,
+                   data=cyclo_dox_pac),
+           title = "PFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
+<br>
+
+
+
+
+
+
+
+
+
+
+

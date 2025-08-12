@@ -14,13 +14,19 @@ path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
 patient_data <- 
   read_csv(
     paste0(path_raw, "/raw data",
-           "/DFCI.Moffitt.CHIP.shared/DFCI.CH.patients2025-06-13.csv")) %>% 
+           "/DFCI.CH.patients2025-07-08.csv")) %>% 
   janitor::clean_names()
 
 chemo_data <- 
   read_csv(
     paste0(path_raw, "/raw data",
-           "/DFCI.Moffitt.CHIP.shared/DFCI.CH.chemo2025-06-13.csv")) %>% 
+           "/DFCI.CH.chemo2025-07-08.csv")) %>% 
+  janitor::clean_names()
+
+rad_data <- 
+  read_csv(
+    paste0(path_raw, "/raw data",
+           "/DFCI.CH.radiation2025-07-08.csv")) %>% 
   janitor::clean_names()
 
 path_raw2 <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
@@ -35,13 +41,13 @@ drug_class <-
 
 
 ############################################################ II ### Clean data----
-patient_data1 <- patient_data %>% 
+patient_data <- patient_data %>% 
   rename(deidentified_patient_id = id, 
          age_at_sample = age,
          smoking_status = smoking,
          treatment_type = cohort
          # interval_prepost_sample_chemo = time_between_draws
-         ) %>% 
+  ) %>% 
   mutate(race = str_to_sentence(race),
          race = case_when(
            race == "Caucasian"                             ~ "White",
@@ -74,23 +80,9 @@ patient_data1 <- patient_data %>%
   mutate(her2 = case_when(
     her2 == "HER2-"                    ~ "neg",
     her2 == "HER2+"                    ~ "pos"
-  )) %>% 
-  mutate(treatment_type = case_when(
-    treatment_type == "A - chemo"      ~ "chemo",
-    treatment_type == "B - no chemo"   ~ "hormone"
-  )) %>% 
-  mutate(treatment_received = treatment_type) %>% 
-  mutate(interval_prepost_sample_chemo = case_when(
-    treatment_type == "chemo"          ~ time_between_draws
-  )) %>% 
-  mutate(interval_prepost_sample_hormone = case_when(
-    treatment_type == "hormone"        ~ time_between_draws
-  )) %>% 
-  select(deidentified_patient_id, age_at_sample, race,
-         smoking_status, er, pr, her2, 
-         histology, tnm_stage, 
-         treatment_type, treatment_received,
-         interval_prepost_sample_chemo, interval_prepost_sample_hormone)
+  ))
+
+
 
 chemo_data1 <- chemo_data %>% 
   rename(deidentified_patient_id = id) %>% 
@@ -104,14 +96,65 @@ chemo_data1 <- chemo_data %>%
   ungroup() %>% 
   select(deidentified_patient_id, chemotherapy_drug_1 = drug_name)
 
+rad_data1 <- rad_data %>% 
+  select(id, had_rad = rt_between_t1_t2)
 
-patient_data1 <- patient_data1 %>% 
+
+
+patient_data1 <- patient_data %>% 
+  # Update the 1 patient who only received targeted therapy
   left_join(., chemo_data1, 
             by = "deidentified_patient_id") %>% 
-  mutate_at(c("treatment_type", "treatment_received"), ~ case_when(
-    chemotherapy_drug_1 == "T-DM1"                  ~ "no chemo",
+  mutate_at(c("treatment_type"), ~ case_when(
+    chemotherapy_drug_1 == "T-DM1"                  ~ "B - no chemo",
     TRUE                                            ~ as.character(.)
-  ))
+  )) %>% 
+  # Add radiation info
+  left_join(., rad_data1, 
+            by = c("deidentified_patient_id" = "id")) %>% 
+  
+  mutate(treatment_type = case_when(
+    had_rad == "Yes" &
+      treatment_type == "A - chemo"             ~ "chemorad",
+    treatment_type == "A - chemo"               ~ "chemo",
+    had_rad == "Yes" &
+      treatment_type == "B - no chemo"          ~ "radiation",
+    treatment_type == "B - no chemo"            ~ "hormone"#,
+    # had_rad == "Yes"                            ~ "radiation"
+  )) %>% 
+  mutate(treatment_received = treatment_type) %>% 
+
+  select(deidentified_patient_id, age_at_sample, race,
+         smoking_status, prior_cancer, prior_radiation,
+         er, pr, her2, 
+         histology, tnm_stage, had_rad,
+         treatment_type, treatment_received, time_between_draws) %>% 
+  
+  mutate(interval_prepost_sample_rad = case_when(
+    treatment_type == "radiation"      ~ time_between_draws
+  )) %>% 
+  mutate(interval_prepost_sample_chemo = case_when(
+    treatment_type == "chemo"          ~ time_between_draws
+  )) %>% 
+  mutate(had_chemo = case_when(
+    treatment_type == "chemo"          ~ "Yes",
+    treatment_type == "chemorad"       ~ "Yes"
+  )) %>% 
+  mutate(interval_prepost_sample_hormone = case_when(
+    treatment_type == "hormone"        ~ time_between_draws
+  )) %>% 
+  mutate(had_hormone = case_when(
+    treatment_type == "hormone"        ~ "Yes"
+  )) %>% 
+  
+  mutate(interval_prepost_sample_chemorad = case_when(
+    treatment_type == "chemorad"       ~ time_between_draws
+  )) %>% 
+  mutate(interval_prepost_sample_chemo_rad = interval_prepost_sample_chemorad) %>% 
+  mutate(had_chemo_rad = case_when(
+    treatment_type == "chemorad"       ~ "Yes"
+  )) %>% 
+  select(-time_between_draws)
 
 
 ############################################################ III ### Merge with data format----
