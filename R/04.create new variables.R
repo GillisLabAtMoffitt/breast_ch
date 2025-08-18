@@ -112,8 +112,9 @@ sequenced_patient_data <- sequenced_patient_data %>%
          .after = os_event) %>%
   # PFS
   mutate(pfs_event = case_when(
+    !is.na(progression_type)            ~ 1,
+    os_event == 1                       ~ 1,
     is.na(progression_type)             ~ 0,
-    !is.na(progression_type)            ~ 1
   ), .after = progression_type) %>% 
   mutate(pfs_date = coalesce(date_of_progression, date_of_last_followup), 
          .after = pfs_event) %>% 
