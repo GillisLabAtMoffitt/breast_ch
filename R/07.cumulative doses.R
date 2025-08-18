@@ -26,6 +26,14 @@ drug_class <-
     sheet = "Sup. Table 1", skip = 1) %>% 
   janitor::clean_names()
 
+radiation_dosing <- 
+  readxl::read_xlsx(paste0(
+    path_raw, 
+    "/raw_data/CHIP_Radiation Dosing_IW_8-11-25.xlsx")
+    ) %>% 
+  janitor::clean_names()
+
+
 path_save <- fs::path("", "Volumes", "Gillis_Research","Christelle Colin-Leitzinger", 
                       "Breast CH", "sequential_samples_hossein")
 
@@ -36,7 +44,7 @@ sequenced_patient_data <-
     "/Identified breast data with sequenced sequential sample and clinical-CBC-Cytopenia-NADIR_2025-03-31.csv"))
 
 
-############################################################ II ### Cumulative doses----
+############################################################ II ### Cumulative drug doses----
 sample_dates <- sample_dates %>% 
   select(mrn, pre_sample_collection_date, last_post_sample_collection_date) %>% 
   distinct(mrn, .keep_all = TRUE) %>% 
@@ -203,12 +211,121 @@ write_csv(drug_dose1 %>%
                  "/De-identified Cumulative dose score_",
                  today(), ".csv"))
 
+rm(drug_class, drug_dose, sample_dates, sequenced_patient_data)
 
 
+############################################################ III ### Cumulative radiation doses----
+# cumulative radiation dose received by each patient in 2-Gy per fraction equivalents (EQD2) using an α/β of 3 Gy
+# calculate tertiles of dose based on the distribution of cumulative EQD2 received over the entire cohort 
+# assigne each individual a score based on their tertile of exposure 
+# e.g. a patient who did not receive external beam radiation received a score of zero for that particular agent
+
+radiation_dosing <- radiation_dosing %>% 
+  mutate(mrn = as.character(mrn)) %>% 
+  filter(!is.na(mrn)) %>% 
+  select(mrn, deidentified_patient_id, x2gy_fx_eqd2, radiation_body_site) %>% 
+  # Marked patients who have no data
+  mutate(has_dosing_data = case_when(
+    !is.na(x2gy_fx_eqd2)                                ~ "Yes"
+  ), .after = x2gy_fx_eqd2) %>%
+  group_by(mrn) %>% 
+  fill(has_dosing_data, .direction = "updown") %>% 
+  mutate(has_dosing_data = replace_na(has_dosing_data, "No")) %>% 
+  mutate(sample_sequence = row_number(), .after = mrn) %>% 
+  ungroup() %>% 
+  
+  mutate(pre_to_first_sample = case_when(
+    sample_sequence == 1                                ~ "Yes"
+  )) %>% 
+  mutate(pre_to_last_sample = case_when(
+    sample_sequence >= 1                                ~ "Yes"
+  )) %>% 
+  mutate(is_breast_radiation = case_when(
+    str_detect(radiation_body_site, "breast") |
+      str_detect(radiation_body_site, "CW")             ~ "Yes"
+  )) %>% 
+  # calculate cumulative dose per patient
+  group_by(mrn, pre_to_first_sample) %>% 
+  mutate(cumulative_dose_pre_firstseqsample = case_when(
+    pre_to_first_sample == "Yes" &
+      has_dosing_data == "Yes"                          ~ x2gy_fx_eqd2
+  )) %>% 
+  group_by(mrn, pre_to_last_sample) %>% 
+  mutate(cumulative_dose_pre_lastseqsample = case_when(
+    pre_to_last_sample == "Yes" &
+      has_dosing_data == "Yes"                          ~ sum(x2gy_fx_eqd2, na.rm = TRUE)
+  )) %>% 
+  ungroup() %>% 
+  
+  # calculate cumulative dose per patient with breast site radiation only
+  group_by(mrn, is_breast_radiation, pre_to_first_sample) %>% 
+  mutate(cumulative_dose_pre_firstseqsample_breast_site_only = case_when(
+    pre_to_first_sample == "Yes" &
+      is_breast_radiation == "Yes" &
+      has_dosing_data == "Yes"                          ~ sum(x2gy_fx_eqd2, na.rm = TRUE)
+  )) %>% 
+  group_by(mrn, is_breast_radiation, pre_to_last_sample) %>% 
+  mutate(cumulative_dose_pre_lastseqsample_breast_site_only = case_when(
+    pre_to_last_sample == "Yes" &
+      is_breast_radiation == "Yes" &
+    has_dosing_data == "Yes"                          ~ sum(x2gy_fx_eqd2, na.rm = TRUE)
+  )) %>% 
+  ungroup() %>% 
+  select(-c(x2gy_fx_eqd2, sample_sequence, 
+            pre_to_first_sample, pre_to_last_sample, 
+            radiation_body_site, is_breast_radiation)) %>%
+  group_by(mrn) %>% 
+  fill(cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample,
+       cumulative_dose_pre_firstseqsample_breast_site_only,
+       cumulative_dose_pre_lastseqsample_breast_site_only, .direction = "updown") %>% 
+  ungroup() %>% 
+  distinct(mrn, .keep_all = TRUE) %>% 
+  
+  # create tertile categories
+  mutate(tertile_score_pre_firstseqsample = cut(cumulative_dose_pre_firstseqsample,
+                                                breaks = quantile(cumulative_dose_pre_firstseqsample, 
+                                                                  probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                                                include.lowest = TRUE,
+                                                labels = c("1", "2", "3"))) %>% 
+  mutate(tertile_score_pre_lastseqsample = cut(cumulative_dose_pre_lastseqsample,
+                                               breaks = quantile(cumulative_dose_pre_lastseqsample, 
+                                                                 probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                                               include.lowest = TRUE,
+                                               labels = c("1", "2", "3"))) %>% 
+  
+  mutate(tertile_score_pre_firstseqsample_breast_site_only = cut(cumulative_dose_pre_firstseqsample_breast_site_only,
+                                                breaks = quantile(cumulative_dose_pre_firstseqsample_breast_site_only, 
+                                                                  probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                                                include.lowest = TRUE,
+                                                labels = c("1", "2", "3"))) %>% 
+  mutate(tertile_score_pre_lastseqsample_breast_site_only = cut(cumulative_dose_pre_lastseqsample_breast_site_only,
+                                               breaks = quantile(cumulative_dose_pre_lastseqsample_breast_site_only, 
+                                                                 probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                                               include.lowest = TRUE,
+                                               labels = c("1", "2", "3")))
 
 
+write_csv(radiation_dosing, 
+          paste0(here::here(), 
+                 "/processed data",
+                 "/Cumulative dose radiation score_",
+                 today(), ".csv"))
+write_rds(radiation_dosing, 
+          paste0(here::here(), 
+                 "/processed data",
+                 "/Cumulative dose radiation score_",
+                 today(), ".rds"))
+write_csv(radiation_dosing, 
+          paste0(path_save, 
+                 "/processed data",
+                 "/Cumulative dose radiation score_",
+                 today(), ".csv"))
+write_csv(radiation_dosing %>% 
+            select(-mrn), 
+          paste0(path_save, 
+                 "/processed data",
+                 "/De-identified cumulative dose radiation score_",
+                 today(), ".csv"))
 
-
-
-
+# End----
 
