@@ -31,14 +31,6 @@ exclude_pfs_other_cancer <-
   janitor::clean_names()
 
 
-
-
-
-
-
-
-
-
 path_calls <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
                      "Breast_R01", "CH_calls")
 
@@ -46,10 +38,6 @@ inclusion_data <- readxl::read_xlsx(paste0(path_calls,
                                           "/Breast_final_calls_removeSynonymous_0827_08.12.2025.xlsx"), 
                                    sheet = "Sheet1") %>% 
   janitor::clean_names()
-
-
-
-
 
 
 ############################################################ II ### Prep new data date----
@@ -172,7 +160,20 @@ sequenced_patient_data <- sequenced_patient_data %>%
            duration(n = 1, unit = "months"),
          .after = pfs_event) %>% 
 
-  select(-c(nancy_notes, new_progression_date))
+  select(-c(nancy_notes, new_progression_date)) %>% 
+  
+  # Code Recurrence free survival
+  mutate(rfs_event = case_when(
+    !is.na(date_of_progression)                                       ~ 1,
+    is.na(date_of_progression)                                        ~ 0
+  ), .after = progression_type) %>% 
+  mutate(rfs_date = case_when(
+    rfs_event == 1                              ~ date_of_progression,
+    rfs_event == 0                              ~ date_of_last_followup
+  ), .after = rfs_event) %>% 
+  mutate(rfs_time_months = interval(start = date_of_first_corresponding_treatment, end = rfs_date)/
+           duration(n = 1, unit = "months"),
+         .after = rfs_event)
 
 
 # Add patient inclusion in Mona's analysis
@@ -196,19 +197,29 @@ sequenced_patient_data <- sequenced_patient_data %>%
   fill(patient_included_in_mona_manuscript, .direction = "updown") %>% 
   ungroup()
 
+path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
+                     "Breast_R01")
 
-write_csv(sequenced_patient_data, paste0(here::here(), "/processed data",
-                                         "/Identified breast data_",
-                                         today(), ".csv"))
 write_csv(sequenced_patient_data, paste0(path_save, "/processed data",
                                          "/Identified breast data_",
                                          today(), ".csv"))
-write_rds(sequenced_patient_data, paste0(path_save, "/processed data",
+write_csv(sequenced_patient_data, paste0(here::here(), "/processed data",
                                          "/Identified breast data_",
-                                         today(), ".rds"))
+                                         today(), ".csv"))
 write_rds(sequenced_patient_data, paste0(here::here(), "/processed data",
                                          "/Identified breast data_",
                                          today(), ".rds"))
+write_rds(sequenced_patient_data, paste0(path_save, "/processed data",
+                                         "/Identified breast data_",
+                                         today(), ".rds"))
+write_csv(sequenced_patient_data, 
+          paste0(path_raw, "/FINAL/Overall_179patients",
+                 "/Identified breast data.csv"))
+write_csv(sequenced_patient_data %>% 
+            filter(patient_included_in_mona_manuscript == "TRUE" &
+                     samples_excluded == "FALSE"), 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/Identified breast data.csv"))
 
 
 deids_data <- sequenced_patient_data %>% 
@@ -229,10 +240,17 @@ write_csv(deids_data,
                  "/De-identified breast_", 
                  today(), ".csv"))
 
+write_csv(deids_data, 
+          paste0(path_raw, "/FINAL/Overall_179patients",
+                 "/De-identified breast data.csv"))
+write_csv(deids_data %>% 
+            filter(patient_included_in_mona_manuscript == "TRUE" &
+                     samples_excluded == "FALSE"), 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/De-identified breast data.csv"))
   
   
-  
-  
+# End 
   
   
   

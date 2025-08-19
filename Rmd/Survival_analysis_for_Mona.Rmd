@@ -37,10 +37,10 @@ theme_set(theme_classic())
 data <- 
   readxl::read_xlsx(paste0(here::here(), 
                            "/sample_status.xlsx"))
-sequenced_patient_data <- read_csv(paste0(
+sequenced_patient_data <- read_rds(paste0(
   here::here(),
   "/processed data",
-  "/De-identified breast data with sequenced sequential sample and clinical-CBC-Cytopenia-NADIR_2025-05-16.csv"))
+  "/Identified breast data_2025-08-15.rds"))
 ```
 
 ```{r merge}
@@ -88,27 +88,34 @@ write_rds(data_merge %>%
                    age_at_sample, tnm_stage, tnm_stage_cat,
                    er, pr, her2, status_CH, status_selection, cond, 
                    os_event, os_time_from_tx_start_months, pfs_event, pfs_time_months), 
-          "data_meerge_updated.rds")
+          "data_merge_updated.rds")
 ```
 
 # OS
-# Overall population
-## 1. Summary 
+## Overall population
+### 1. Summary 
 ```{r Clinical table, echo = TRUE, class.source= 'fold-hide'}
 data_merge %>% 
   select(age_at_sample, tnm_stage, tnm_stage_cat,
          er, pr, her2, status_CH, status_selection, cond) %>% 
+  mutate(age_cat = case_when(
+    age_at_sample < 40         ~ "20-39",
+    age_at_sample < 50          ~ "40-49",
+    age_at_sample < 60          ~ "50-59",
+    age_at_sample >= 60          ~ "60-80",
+  )) %>% 
   tbl_summary() %>% 
   bold_labels()
 ```
 
-## 2. Hazard ratios and 95% confidence intervals
+### 2. Hazard ratios and 95% confidence intervals
 ```{r, echo = TRUE, class.source= 'fold-hide'}
 tbl1 <- tbl_uvregression(
   data_merge,
   method = coxph,
   y = Surv(time = os_time_from_tx_start_months, event = os_event),
   exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
   include = c("age_at_sample", "tnm_stage_cat",
               "er", "pr", "her2", "status_CH"),
   # pvalue_fun = label_style_pvalue(digits = 2)
@@ -120,7 +127,8 @@ tbl1 <- tbl_uvregression(
 tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
                    event = data_merge$os_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + status_CH,
               data = data_merge)  %>%
-  tbl_regression(exponentiate = TRUE) %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level")
 
@@ -129,7 +137,7 @@ tbl_merge(list(tbl1, tbl2),
                           "**Multivariable - each HR adjusted for <br>variables in table**"))
 ```
 
-## 3. KM
+### 3. KM
 The KM are not ajusted
 ```{r Survival, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
 ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ status_CH,
@@ -152,13 +160,13 @@ ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ status_CH,
 )
 ```
 
-# Status selection subset
+## Status selection subset
 ```{r, echo = TRUE, class.source= 'fold-hide'}
 selection_subset <- data_merge %>% 
   filter(!is.na(cond))
 ```
 
-## 1. Summary 
+### 1. Summary 
 ```{r Clinical table selection_subset, echo = TRUE, class.source= 'fold-hide'}
 selection_subset %>% 
   select(age_at_sample, tnm_stage, tnm_stage_cat, 
@@ -167,13 +175,14 @@ selection_subset %>%
   bold_labels()
 ```
 
-## 2. Hazard ratios and 95% confidence intervals
+### 2. Hazard ratios and 95% confidence intervals
 ```{r HR selection_subset, echo = TRUE, class.source= 'fold-hide'}
 tbl1 <- tbl_uvregression(
   selection_subset,
   method = coxph,
   y = Surv(time = os_time_from_tx_start_months, event = os_event),
   exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
   include = c("age_at_sample", "tnm_stage_cat",
               "er", "pr", "her2", "cond"),
   # pvalue_fun = label_style_pvalue(digits = 2)
@@ -185,16 +194,18 @@ tbl1 <- tbl_uvregression(
 tbl2 <- coxph(Surv(time = selection_subset$os_time_from_tx_start_months,
                    event = selection_subset$os_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + cond,
               data = selection_subset)  %>%
-  tbl_regression(exponentiate = TRUE) %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
-  add_nevent(location = "level") %>% add_n(location = "level")
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**", 
                           "**Multivariable - each HR adjusted for <br>variables in table**"))
 ```
 
-## 3. KM
+### 3. KM
 ```{r Survival selection_subset, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
 ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ cond,
                    data=selection_subset),
@@ -217,15 +228,15 @@ ggsurvplot(survfit(Surv(os_time_from_tx_start_months, os_event) ~ cond,
 ```
 
 # PFS
-# Overall population
-
-## 1. Hazard ratios and 95% confidence intervals
+## Overall population
+### 1. Hazard ratios and 95% confidence intervals
 ```{r PFS, echo = TRUE, class.source= 'fold-hide'}
 tbl1 <- tbl_uvregression(
   data_merge,
   method = coxph,
   y = Surv(time = pfs_time_months, event = pfs_event),
   exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
   include = c("age_at_sample", "tnm_stage_cat",
               "er", "pr", "her2", "status_CH"),
   # pvalue_fun = label_style_pvalue(digits = 2)
@@ -237,16 +248,18 @@ tbl1 <- tbl_uvregression(
 tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
                    event = data_merge$pfs_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + status_CH,
               data = data_merge)  %>%
-  tbl_regression(exponentiate = TRUE) %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
-  add_nevent(location = "level") %>% add_n(location = "level")
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**", 
                           "**Multivariable - each HR adjusted for <br>variables in table**"))
 ```
 
-## 2. KM
+### 2. KM
 The KM are not ajusted
 ```{r Survival PFS, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
 ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ status_CH,
@@ -269,15 +282,16 @@ ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ status_CH,
 )
 ```
 
-# Status selection subset
+## Status selection subset
 
-## 1. Hazard ratios and 95% confidence intervals
+### 1. Hazard ratios and 95% confidence intervals
 ```{r HR PFS selection_subset, echo = TRUE, class.source= 'fold-hide'}
 tbl1 <- tbl_uvregression(
   selection_subset,
   method = coxph,
   y = Surv(time = pfs_time_months, event = pfs_event),
   exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
   include = c("age_at_sample", "tnm_stage_cat",
               "er", "pr", "her2", "cond"),
   # pvalue_fun = label_style_pvalue(digits = 2)
@@ -289,16 +303,18 @@ tbl1 <- tbl_uvregression(
 tbl2 <- coxph(Surv(time = selection_subset$pfs_time_months,
                    event = selection_subset$pfs_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + cond,
               data = selection_subset)  %>%
-  tbl_regression(exponentiate = TRUE) %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
-  add_nevent(location = "level") %>% add_n(location = "level")
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**", 
                           "**Multivariable - each HR adjusted for <br>variables in table**"))
 ```
 
-## 2. KM
+### 2. KM
 ```{r PFS selection_subset, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
 ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ cond,
                    data=selection_subset),
@@ -321,5 +337,134 @@ ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ cond,
 ```
 
 
+
+# RFS
+
+```{r}
+data_merge <- data_merge %>% 
+  mutate(rfs_event = case_when(
+    !is.na(date_of_progression)                                       ~ 1,
+    is.na(date_of_progression)                                        ~ 0
+  )) %>% 
+  mutate(rfs_date = case_when(
+    rfs_event == 1                              ~ date_of_progression,
+    rfs_event == 0                              ~ date_of_last_followup
+  )) %>% 
+  mutate(rfs_time_months = interval(start = date_of_first_corresponding_treatment, end = rfs_date)/
+           duration(n = 1, unit = "months"),
+         .after = rfs_event) #%>% 
+  # select(mrn, rfs_date, rfs_event, pfs_event, pfs_date, progression_type, date_of_progression, date_of_last_followup, os_event)
+
+selection_subset <- data_merge %>% 
+  filter(!is.na(cond))
+```
+## Overall population
+
+### 1. Hazard ratios and 95% confidence intervals
+```{r RFS, echo = TRUE, class.source= 'fold-hide'}
+tbl1 <- tbl_uvregression(
+  data_merge,
+  method = coxph,
+  y = Surv(time = rfs_time_months, event = rfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "status_CH"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = data_merge$rfs_time_months,
+                   event = data_merge$rfs_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + status_CH,
+              data = data_merge)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**", 
+                          "**Multivariable - each HR adjusted for <br>variables in table**"))
+```
+
+### 2. KM
+The KM are not ajusted
+```{r Survival RFS, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
+ggsurvplot(survfit(Surv(rfs_time_months, rfs_event) ~ status_CH,
+                   data=data_merge),
+           title = "RFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+)
+```
+
+## Status selection subset
+
+### 1. Hazard ratios and 95% confidence intervals
+```{r HR RFS selection_subset, echo = TRUE, class.source= 'fold-hide'}
+tbl1 <- tbl_uvregression(
+  selection_subset,
+  method = coxph,
+  y = Surv(time = rfs_time_months, event = rfs_event),
+  exponentiate = TRUE,
+  add_estimate_to_reference_rows = TRUE,
+  include = c("age_at_sample", "tnm_stage_cat",
+              "er", "pr", "her2", "cond"),
+  # pvalue_fun = label_style_pvalue(digits = 2)
+  ) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl2 <- coxph(Surv(time = selection_subset$rfs_time_months,
+                   event = selection_subset$rfs_event) ~ age_at_sample + tnm_stage_cat + er + pr + her2 + cond,
+              data = selection_subset)  %>%
+  tbl_regression(exponentiate = TRUE,
+                 add_estimate_to_reference_rows = TRUE) %>%
+  bold_p(t = .05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level") %>%
+  bold_labels() %>% italicize_levels()
+
+tbl_merge(list(tbl1, tbl2), 
+          tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**", 
+                          "**Multivariable - each HR adjusted for <br>variables in table**"))
+```
+
+### 2. KM
+```{r RFS selection_subset, fig.height = 7, echo = TRUE, class.source= 'fold-hide'}
+ggsurvplot(survfit(Surv(rfs_time_months, rfs_event) ~ cond,
+                   data=selection_subset),
+           title = "RFS Analysis",
+           font.main = c(20, "bold", "black"),
+           font.x = c(18, "bold", "black"),
+           font.y = c(18, "bold", "black"),
+           font.legend = c(16, "black"),
+           font.tickslab = c(16, "bold", "black"),
+           size = 1.5,
+
+           xlab = "Time (months)",
+           legend = "top",
+           legend.title = "",
+           pval = TRUE,
+           conf.int = FALSE,
+           # Censor
+           censor = TRUE
+) %++% guides(colour = guide_legend(ncol = 1))
+```
 
 

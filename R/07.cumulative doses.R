@@ -29,7 +29,7 @@ drug_class <-
 radiation_dosing <- 
   readxl::read_xlsx(paste0(
     path_raw, 
-    "/raw_data/CHIP_Radiation Dosing_IW_8-11-25.xlsx")
+    "/raw_data/CHIP_Radiation Dosing_IW_8-11-25_NG.xlsx")
     ) %>% 
   janitor::clean_names()
 
@@ -210,6 +210,15 @@ write_csv(drug_dose1 %>%
                  "/processed data",
                  "/De-identified Cumulative dose score_",
                  today(), ".csv"))
+path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
+                     "Breast_R01")
+write_csv(drug_dose1, 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/Cumulative dose score.csv"))
+write_csv(drug_dose1 %>% 
+            select(-mrn), 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/De-identified cumulative dose score.csv"))
 
 rm(drug_class, drug_dose, sample_dates, sequenced_patient_data)
 
@@ -223,7 +232,7 @@ rm(drug_class, drug_dose, sample_dates, sequenced_patient_data)
 radiation_dosing <- radiation_dosing %>% 
   mutate(mrn = as.character(mrn)) %>% 
   filter(!is.na(mrn)) %>% 
-  select(mrn, deidentified_patient_id, x2gy_fx_eqd2, radiation_body_site) %>% 
+  select(mrn, deidentified_patient_id, treatment_type, x2gy_fx_eqd2, radiation_body_site) %>% 
   # Marked patients who have no data
   mutate(has_dosing_data = case_when(
     !is.na(x2gy_fx_eqd2)                                ~ "Yes"
@@ -273,11 +282,12 @@ radiation_dosing <- radiation_dosing %>%
   ungroup() %>% 
   select(-c(x2gy_fx_eqd2, sample_sequence, 
             pre_to_first_sample, pre_to_last_sample, 
-            radiation_body_site, is_breast_radiation)) %>%
+            is_breast_radiation)) %>%
   group_by(mrn) %>% 
   fill(cumulative_dose_pre_firstseqsample, cumulative_dose_pre_lastseqsample,
        cumulative_dose_pre_firstseqsample_breast_site_only,
-       cumulative_dose_pre_lastseqsample_breast_site_only, .direction = "updown") %>% 
+       cumulative_dose_pre_lastseqsample_breast_site_only,
+       radiation_body_site, .direction = "updown") %>% 
   ungroup() %>% 
   distinct(mrn, .keep_all = TRUE) %>% 
   
@@ -330,6 +340,15 @@ write_csv(radiation_dosing %>%
                  "/De-identified cumulative dose radiation score_",
                  today(), ".csv"))
 
+path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
+                     "Breast_R01")
+write_csv(radiation_dosing, 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/Cumulative dose radiation score.csv"))
+write_csv(radiation_dosing %>% 
+            select(-mrn), 
+          paste0(path_raw, "/FINAL/Mona_subset_171patients",
+                 "/De-identified cumulative dose radiation score.csv"))
 
 # End----
 
