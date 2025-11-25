@@ -135,22 +135,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
@@ -162,22 +146,6 @@ tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>% 
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**")
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -199,22 +167,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
@@ -226,22 +178,6 @@ tbl2 <- coxph(Surv(time = data_merge$os_time_from_tx_start_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>% 
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**")
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -304,22 +240,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = non_ch_subset$os_time_from_tx_start_months,
@@ -331,22 +251,6 @@ tbl2 <- coxph(Surv(time = non_ch_subset$os_time_from_tx_start_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -394,22 +298,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
@@ -421,22 +309,6 @@ tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -458,22 +330,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
@@ -485,22 +341,6 @@ tbl2 <- coxph(Surv(time = data_merge$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -548,23 +388,6 @@ tbl1 <- tbl_uvregression(
   # pvalue_fun = label_style_pvalue(digits = 2)
   ) %>%
   bold_p(t = .05) %>%
-  # add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = non_ch_subset$pfs_time_months,
@@ -576,22 +399,6 @@ tbl2 <- coxph(Surv(time = non_ch_subset$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -730,24 +537,26 @@ ggsurvplot(survfit(Surv(pfs_time_months, pfs_event) ~ tertile_patient_pre_firsts
 ```{r redo drug class but keeping drug name in it}
 path_raw <- fs::path("", "Volumes", "Lab_Gillis", "Data", "Breast",
                      "Breast_R01", "sequential_samples_hossein")
+path_raw <- fs::path("", "Volumes", "Gillis_Research", "Lab_Data", "BreastCHEvolution",
+                     "ProcessedData")
 drug_dose <- 
   readxl::read_xlsx(paste0(
     path_raw, 
-    "/raw_data/Chemo_patient_MRN_chemotherapy_drug_04.02.2025 1.xlsx"),
+    "/BreastCH_DosingChemo_20250402.xlsx"),
     sheet = "Normalized") %>% 
   janitor::clean_names()
 
 sample_dates <- 
   readxl::read_xlsx(paste0(
     path_raw, 
-    "/raw_data/Chemo_patient_MRN_chemotherapy_drug_04.02.2025 1.xlsx"),
+    "/BreastCH_DosingChemo_20250402.xlsx"),
     sheet = "Chemo_patient_MRN_chemotherapy_") %>% 
   janitor::clean_names()
 
 drug_class <- 
   readxl::read_xlsx(paste0(
     path_raw, 
-    "/raw_data/Bolton_Supp Tables.xlsx"),
+    "/BreastCH_BoltonChemoDosingNatGenet2020.xlsx"),
     sheet = "Sup. Table 1", skip = 1) %>% 
   janitor::clean_names()
 
@@ -925,6 +734,18 @@ drug_dose_dat %>%
   tbl_summary(by = tertile_patient_pre_firstseqsample,
               sort = list(everything() ~ "frequency")) %>% 
   bold_labels()
+
+drug_dose_dat %>% 
+  select(deidentified_patient_id, 
+         tertile_patient_pre_firstseqsample, 
+         chemotherapy_drug)
+
+write_csv(drug_dose_dat %>% 
+  select(deidentified_patient_id, 
+         tertile_patient_pre_firstseqsample, 
+         chemotherapy_drug), 
+  paste0(here::here(),
+          "/processed data/BreastCH_HomogenousPatientDrugsTertileGroup_20251121.csv"))
 ```
 
 ## 1. cyclophosphamide; docetaxel
@@ -945,22 +766,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
@@ -972,22 +777,6 @@ tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -1056,22 +845,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
@@ -1082,22 +855,6 @@ tbl2 <- coxph(Surv(time = cyclo_doce$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  # 
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>% 
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2), 
@@ -1166,22 +923,6 @@ tbl1 <- tbl_uvregression(
   ) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  #
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>%
   bold_labels() %>% italicize_levels()
 
 tbl2 <- coxph(Surv(time = cyclo_dox_pac$pfs_time_months,
@@ -1193,22 +934,6 @@ tbl2 <- coxph(Surv(time = cyclo_dox_pac$pfs_time_months,
                  add_estimate_to_reference_rows = TRUE) %>%
   bold_p(t = .05) %>%
   add_nevent(location = "level") %>% add_n(location = "level") %>%
-  # modify_table_styling(
-  #   columns = conf.low,
-  #   rows = reference_row %in% TRUE,
-  #   missing_symbol = "Reference"
-  # ) %>%
-  # modify_column_merge(
-  #   pattern = "{stat_n} ({stat_nevent})",
-  #   rows = !is.na(stat_nevent)
-  # ) %>%
-  # modify_header(stat_n = "**N (Event N)**") %>%
-  #
-  # modify_column_merge(
-  #   pattern = "{estimate} ({conf.low}, {conf.high})",
-  #   rows = !is.na(estimate)
-  # ) %>%
-  # modify_header(estimate = "**HR (95% CI)**") %>%
   bold_labels() %>% italicize_levels()
 
 tbl_merge(list(tbl1, tbl2),
