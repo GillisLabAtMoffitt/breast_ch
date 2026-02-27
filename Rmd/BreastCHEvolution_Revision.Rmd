@@ -1,0 +1,714 @@
+---
+title: "Revision - Landmark analysis"
+author: "Christelle Colin-Leitzinger"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    theme: united
+    highlight: pygments
+    df_print: kable
+    code_folding: hide
+  word_document:
+    toc: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align='center'
+                      )
+```
+
+```{r library, echo = FALSE}
+library(tidyverse)
+library(gtsummary)
+library(survminer)
+library(survival)
+theme_gtsummary_compact()
+theme_set(theme_classic())
+```
+
+```{r load}
+data <- 
+  readxl::read_xlsx(paste0(here::here(), 
+                           "/sample_status_20260217.xlsx"))
+sequenced_patient_data <- read_rds(paste0(
+  here::here(),
+  "/processed data",
+  "/Identified breast data_2025-08-19.rds"))
+
+drug_tertile <- read_rds(paste0(
+  here::here(),
+  "/processed data",
+  "/Cumulative dose score_2025-05-06.rds"))
+```
+
+```{r merge}
+data_merge <- data %>% 
+  mutate(deidentified_patient_id = paste0("breast_study_", sampleID)) %>% 
+  left_join(., sequenced_patient_data,
+            by = join_by(deidentified_patient_id)) %>% 
+  left_join(., drug_tertile %>% 
+              select(deidentified_patient_id, tertile_patient_pre_firstseqsample) %>%
+              filter(!is.na(tertile_patient_pre_firstseqsample)) %>% 
+              distinct(deidentified_patient_id, .keep_all = TRUE),
+            by = join_by(deidentified_patient_id))
+```
+
+```{r cleaning}
+data_merge <- data_merge %>% 
+  mutate(tnm_stage = case_when(
+    str_detect(tnm_stage, "0")       ~ "0",
+    str_detect(tnm_stage, "1")       ~ "1",
+    str_detect(tnm_stage, "2")       ~ "2",
+    str_detect(tnm_stage, "3")       ~ "3",
+    str_detect(tnm_stage, "4")       ~ "4",
+    str_detect(tnm_stage, "99")      ~ NA_character_,
+    TRUE                             ~ tnm_stage
+  )) %>% 
+  mutate(tnm_stage_cat = case_when(
+    tnm_stage == "0" |
+    tnm_stage == "1" |
+    tnm_stage == "2"                 ~ "Early stage",
+    tnm_stage == "3" |
+    tnm_stage == "4"                 ~ "Late stage",
+    TRUE                             ~ tnm_stage
+  ), tnm_stage_cat = factor(tnm_stage_cat, levels = c("Early stage", "Late stage"))) %>% 
+  mutate_at(c("er", "pr", "her2"), ~ factor(., levels = c("neg", "pos"))) %>% 
+  mutate(status_CH = factor(status_CH, levels = c("noCH", "CH"))) %>% 
+  mutate(cond = case_when(
+    status_selection == "NegativeSelection"      ~ "Neg/Not impacted",
+    status_selection == "NotChanged"             ~ "Neg/Not impacted",
+    status_selection == "PositiveSelection"      ~ "Pos"
+  ), cond = factor(cond, levels = c("Neg/Not impacted", "Pos"))) %>% 
+  
+  mutate(her2 = case_when(
+    str_detect(deidentified_patient_id, "007422")      ~ "neg",
+    TRUE                                               ~ her2
+  )) %>% 
+  mutate(time_tx_to_postsample_months = interval(start = date_of_first_corresponding_treatment, 
+                                               end = specimen_collection_date)/
+           duration(n = 1, units = "months"))
+  
+# write_rds(data_merge %>% 
+#             select(deidentified_patient_id, 
+#                    age_at_sample, tnm_stage, tnm_stage_cat,
+#                    er, pr, her2, status_CH, status_selection, cond, 
+#                    os_event, os_time_from_tx_start_months, pfs_event, pfs_time_months), 
+#           "data_meerge_updated.rds")
+```
+
+```{r exclude samples}
+data_merge <- data_merge %>% 
+  filter(samples_excluded == "FALSE")
+```
+
+```{r}
+# data_merge %>% 
+#   select(deidentified_patient_id,
+#          treatment_type, sample_treatment_sequence, 
+#          interval_prepost_sample_chemo,
+#          days_from_treatment_start_to_sample_collection) %>% 
+#   # filter(sample_treatment_sequence == "pre") %>% 
+#   ggplot(aes(x=days_from_treatment_start_to_sample_collection))+
+#   geom_bar(color = "blue")+
+#   facet_wrap(.~ sample_treatment_sequence)
+```
+
+```{r, class.source= 'fold-hide'}
+data_merge_wide <- data_merge %>% 
+  filter(sample_treatment_sequence == "pre") %>%
+  select(deidentified_patient_id,
+         treatment_type, pre_age_at_sample = age_at_sample,
+         prespecimen_collection_date = specimen_collection_date,
+         predays_from_treatment_start_to_sample_collection = days_from_treatment_start_to_sample_collection) %>% 
+  
+  left_join(., data_merge %>% 
+              filter(sample_treatment_sequence == "post" |
+                       sample_treatment_sequence == "2ndpost") %>%
+              select(deidentified_patient_id, post_age_at_sample = age_at_sample,
+                     postspecimen_collection_date = specimen_collection_date,
+                     postdays_from_treatment_start_to_sample_collection = days_from_treatment_start_to_sample_collection),
+            by = "deidentified_patient_id") %>% 
+  mutate(time_presample_to_postsample_days = interval(start = prespecimen_collection_date, 
+                                                 end = postspecimen_collection_date)/
+                                    duration(n = 1, units = "days")) 
+data_merge_wide %>% 
+  ggplot(aes(x=time_presample_to_postsample_days))+
+  geom_bar(color = "blue")
+data_merge_wide %>% 
+  select(time_presample_to_postsample_days) %>% 
+  tbl_summary()
+
+data_merge <- data_merge %>% 
+  arrange(deidentified_patient_id, age_at_sample) %>% 
+  group_by(deidentified_patient_id) %>% 
+  mutate(sample_number = row_number()) %>% 
+  ungroup()
+
+```
+
+# Landmark analysis - OS
+Rules:   
+For OS with 6 months cut-off:   
+Include patients that survives 6 months+.  
+Calculate follow up time from the 6 months mark. If patient survive 8 months from date of treatment, follow-up time from landmark is 2 months.   
+If selection status (post sample date) is done before 6 months -> include, otherwise is NA.  
+
+Numbers:
+At 6 months cutoff, 171 patients survives and 50 samples were removed.   
+At 12 months cutoff, 168 patients survives and 1 sample were removed.   
+At 18 months cutoff, 161 patients survives and 0 sample were removed.   
+
+The Ns in the regression tables are complete cases.
+```{r create months data}
+months_landmark_data <- data_merge %>% 
+  filter(sample_number > 1) %>% 
+  arrange(deidentified_patient_id, sample_number) %>% 
+  distinct(deidentified_patient_id, .keep_all = TRUE) %>% 
+  mutate(age_at_pfs = interval(start = date_of_birth, 
+                               end = pfs_date)/
+           duration(n = 1, units = "years")) %>% 
+  # Not really necessary but better do it
+  mutate(os_time_6months = case_when(
+    os_time_from_tx_start_months < 6         ~ NA_real_,
+    TRUE                                     ~ os_time_from_tx_start_months - (6 / 12)
+  )) %>% 
+  mutate(os_event_6months = case_when(
+    os_time_from_tx_start_months < 6         ~ NA_real_,
+    TRUE                                     ~ os_event
+  )) %>% 
+  mutate(age_at_months6_cutoff = age_at_first_treatment + (6 / 12)) %>% 
+  mutate(cond_os6months = case_when(
+    age_at_sample <= age_at_months6_cutoff          ~ cond,
+    age_at_sample > age_at_months6_cutoff           ~ NA_character_
+  )) %>% 
+  # select(deidentified_patient_id, os_time_from_tx_start_months, os_time_6months, 
+  #        age_at_first_treatment,age_at_sample, age_at_months6_cutoff,
+  #        cond, cond_os6months,
+  #        sample_treatment_sequence)
+  mutate(os_time_12months = case_when(
+    os_time_from_tx_start_months < 12        ~ NA_real_,
+    TRUE                                     ~ os_time_from_tx_start_months - (12 / 12)
+  )) %>% 
+  mutate(os_event_12months = case_when(
+    os_time_from_tx_start_months < 12        ~ NA_real_,
+    TRUE                                     ~ os_event
+  )) %>% 
+  mutate(age_at_months12_cutoff = age_at_first_treatment + (12 / 12)) %>% 
+  mutate(cond_os12months = case_when(
+    age_at_sample <= age_at_months12_cutoff         ~ cond,
+    age_at_sample > age_at_months12_cutoff          ~ NA_character_
+  )) %>% 
+  mutate(os_time_18months = case_when(
+    os_time_from_tx_start_months < 18        ~ NA_real_,
+    TRUE                                     ~ os_time_from_tx_start_months - (18 / 12)
+  )) %>% 
+  mutate(os_event_18months = case_when(
+    os_time_from_tx_start_months < 18        ~ NA_real_,
+    TRUE                                     ~ os_event
+  )) %>% 
+  mutate(age_at_months18_cutoff = age_at_first_treatment + (18 / 12)) %>% 
+  mutate(cond_os18months = case_when(
+    age_at_sample <= age_at_months18_cutoff         ~ cond,
+    age_at_sample > age_at_months18_cutoff          ~ NA_character_
+  ))
+```
+
+<!-- ### We start with 171 patients but only 94 have CH -->
+<!-- ```{r} -->
+<!-- months_landmark_data <- months_landmark_data %>%  -->
+<!--   filter(status_CH == "CH") -->
+<!-- ``` -->
+
+
+
+<!-- ## 6 months hazard ratios and 95% confidence intervals -->
+<!-- ### All 94 survives but  -->
+<!-- 1 is missing TNM, 8 are missing HER2, 32 are missing cond (5 are missing HER2+cond).    -->
+<!-- A lot of missing cond because not many patients have age at second sample > months6 cutoff.    -->
+<!-- So we have 58 patients -->
+<!-- ```{r HR 6months_landmark_data} -->
+<!-- landmark_6months <- months_landmark_data %>%  -->
+<!--   filter(os_time_from_tx_start_months >= 6) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_os6months, -->
+<!--          os_time_6months, os_event_6months) %>%  -->
+<!--   drop_na() -->
+
+<!-- # landmark_6months %>% -->
+<!-- #   summarise_all(~ sum(is.na(.)))  -->
+
+
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_6months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = os_time_6months, event = os_event_6months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_os6months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_6months$os_time_6months, -->
+<!--                    event = landmark_6months$os_event_6months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_os6months, -->
+<!--               data = landmark_6months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+<!-- ## 12 months hazard ratios and 95% confidence intervals -->
+<!-- ### 92 survives (little reduced Ns) but  -->
+<!-- 1 is still missing TNM, 8 are missing HER2, ONLY 4 are missing cond (1 is missing HER2+cond). SO LESS MISSINGNESS!!!!    -->
+<!-- Less missing cond because not as many patients have age at second sample > months12 cutoff.    -->
+<!-- So we have 80 patients -->
+<!-- ```{r HR 12months_landmark_data} -->
+<!-- landmark_12months <- months_landmark_data %>%  -->
+<!--   filter(os_time_from_tx_start_months >= 12) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_os12months, -->
+<!--          os_time_12months, os_event_12months) %>%  -->
+<!--   drop_na() -->
+
+<!-- # landmark_12months %>% -->
+<!-- #   summarise_all(~ sum(is.na(.)))  -->
+
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_12months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = os_time_12months, event = os_event_12months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_os12months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_12months$os_time_12months, -->
+<!--                    event = landmark_12months$os_event_12months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_os12months, -->
+<!--               data = landmark_12months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+<!-- ## 18 months hazard ratios and 95% confidence intervals -->
+<!-- ### 90 survives (little reduced Ns) but  -->
+<!-- 1 is still missing TNM, 8 are missing HER2, ONLY 3 are missing cond (1 is missing HER2+cond). SO LESS MISSINGNESS!!!!    -->
+<!-- Less missing cond because not as many patients have age at second sample > months12 cutoff.    -->
+<!-- So we have 79 patients -->
+<!-- ```{r HR 18months_landmark_data} -->
+<!-- landmark_18months <- months_landmark_data %>%  -->
+<!--   filter(os_time_from_tx_start_months >= 18) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_os18months, -->
+<!--          os_time_18months, os_event_18months) %>%  -->
+<!--   drop_na() -->
+
+<!-- landmark_18months %>% -->
+<!--   summarise_all(~ sum(is.na(.)))  -->
+
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_18months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = os_time_18months, event = os_event_18months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_os18months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_18months$os_time_18months, -->
+<!--                    event = landmark_18months$os_event_18months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_os18months, -->
+<!--               data = landmark_18months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+<!-- # Landmark analysis - PFS -->
+<!-- Rules:    -->
+<!-- For PFS with 6 months cut-off:    -->
+<!-- If patient had a PFS event < 6 months cutoff -> exclude patient.   -->
+<!-- If selection status (post sample date) is done before 6 months &     -->
+<!-- If selection status (post sample date) is done before PFS event -> include, otherwise is NA.    -->
+<!-- Calculate PFS time from the 6 months mark. If patient had a progression at 9 months from date of treatment, follow-up time from landmark is 3 months.    -->
+
+<!-- Numbers: -->
+<!-- At 6 months cutoff, 1 patient was excluded for PFS before 6 months + 50 samples were removed because collection was after cut-off. 0 had PFS < sample.    -->
+<!-- At 12 months cutoff, 6 patient was excluded for PFS before 6 months + 1 samples were removed because collection was after cut-off. 0 had PFS < sample.    -->
+<!-- At 18 months cutoff, 20 patient was excluded for PFS before 6 months + 0 samples were removed because collection was after cut-off. 0 had PFS < sample.       -->
+
+<!-- ```{r create PFS months data} -->
+<!-- # Also need to remove the cond before event -->
+<!-- months_landmark_data <- months_landmark_data %>%  -->
+<!--   mutate(time_treatment_to_postsample_months = interval(start = date_of_first_corresponding_treatment,  -->
+<!--                                                  end = specimen_collection_date)/ -->
+<!--                                     duration(n = 1, units = "months")) %>%  -->
+
+<!--   mutate(pfs_time_6months = case_when( -->
+<!--     pfs_time_months < 6                      ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample               ~ NA_real_, -->
+<!--     TRUE                                     ~ pfs_time_months - (6 / 12) -->
+<!--   )) %>%  -->
+<!--   mutate(pfs_event_6months = case_when( -->
+<!--     pfs_time_months < 6                      ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample               ~ NA_real_, -->
+<!--     TRUE                                     ~ pfs_event -->
+<!--   )) %>%  -->
+<!--   mutate(cond_pfs6months = case_when( -->
+<!--     pfs_time_months < 6                             ~ NA_character_, -->
+<!--     age_at_sample > age_at_months6_cutoff           ~ NA_character_, -->
+<!--     age_at_pfs < age_at_sample                      ~ NA_character_, -->
+<!--     age_at_sample <= age_at_months6_cutoff          ~ cond -->
+
+<!--   )) %>% -->
+<!--   # select(deidentified_patient_id, pfs_time_months, pfs_time_6months, age_at_pfs, -->
+<!--   #        age_at_first_treatment,age_at_sample, age_at_months6_cutoff, -->
+<!--   #        cond, cond_pfs6months, -->
+<!--   #        sample_treatment_sequence, os_time_from_tx_start_months) -->
+<!--   mutate(pfs_time_12months = case_when( -->
+<!--     pfs_time_months < 12                             ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_real_, -->
+<!--     TRUE                                             ~ pfs_time_months - (12 / 12) -->
+<!--   )) %>%  -->
+<!--   mutate(pfs_event_12months = case_when( -->
+<!--     pfs_time_months < 12                             ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_real_, -->
+<!--     TRUE                                             ~ pfs_event -->
+<!--   )) %>%  -->
+<!--   mutate(cond_pfs12months = case_when( -->
+<!--     pfs_time_months < 12                             ~ NA_character_, -->
+<!--     age_at_sample > age_at_months12_cutoff           ~ NA_character_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_character_, -->
+<!--     age_at_sample <= age_at_months12_cutoff          ~ cond -->
+<!--   )) %>%  -->
+<!--   # select(deidentified_patient_id, pfs_time_months, pfs_time_12months, age_at_pfs, -->
+<!--   #        age_at_first_treatment,age_at_sample, age_at_months12_cutoff, -->
+<!--   #        cond, cond_pfs12months) -->
+<!--   mutate(pfs_time_18months = case_when( -->
+<!--     pfs_time_months < 18                             ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_real_, -->
+<!--     TRUE                                             ~ pfs_time_months - (18 / 12) -->
+<!--   )) %>%  -->
+<!--   mutate(pfs_event_18months = case_when( -->
+<!--     pfs_time_months < 18                             ~ NA_real_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_real_, -->
+<!--     TRUE                                             ~ pfs_event -->
+<!--   )) %>%  -->
+<!--   mutate(cond_pfs18months = case_when( -->
+<!--     pfs_time_months < 18                             ~ NA_character_, -->
+<!--     age_at_sample > age_at_months18_cutoff           ~ NA_character_, -->
+<!--     age_at_pfs < age_at_sample                       ~ NA_character_, -->
+<!--     age_at_sample <= age_at_months18_cutoff          ~ cond -->
+<!--   )) #%>%  -->
+<!--   # select(deidentified_patient_id, pfs_time_months, pfs_time_18months, age_at_pfs, -->
+<!--   #        age_at_first_treatment,age_at_sample, age_at_months18_cutoff, -->
+<!--   #        cond, cond_pfs18months) -->
+<!-- ``` -->
+
+<!-- ## 6 months hazard ratios and 95% confidence intervals -->
+<!-- ```{r HR PFS 6months_landmark_data} -->
+<!-- landmark_6months <- months_landmark_data %>%  -->
+<!--   filter(pfs_time_months >= 6) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_pfs6months, -->
+<!--          pfs_time_6months, pfs_event_6months) %>%  -->
+<!--   drop_na() -->
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_6months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = pfs_time_6months, event = pfs_event_6months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_pfs6months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_6months$pfs_time_6months, -->
+<!--                    event = landmark_6months$pfs_event_6months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_pfs6months, -->
+<!--               data = landmark_6months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+<!-- ## 12 months hazard ratios and 95% confidence intervals -->
+<!-- ```{r HR PFS 12months_landmark_data} -->
+<!-- landmark_12months <- months_landmark_data %>%  -->
+<!--   filter(pfs_time_months >= 12) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_pfs12months, -->
+<!--          pfs_time_12months, pfs_event_12months) %>%  -->
+<!--   drop_na() -->
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_12months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = pfs_time_12months, event = pfs_event_12months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_pfs12months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_12months$pfs_time_12months, -->
+<!--                    event = landmark_12months$pfs_event_12months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_pfs12months, -->
+<!--               data = landmark_12months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+<!-- ## 18 months hazard ratios and 95% confidence intervals -->
+<!-- ```{r HR PFS 18months_landmark_data} -->
+<!-- landmark_18months <- months_landmark_data %>%  -->
+<!--   filter(pfs_time_months >= 18) %>%  -->
+<!--   select(deidentified_patient_id, age_at_sample, tnm_stage_cat, -->
+<!--          er, pr, her2, cond_pfs18months, -->
+<!--          pfs_time_18months, pfs_event_18months) %>%  -->
+<!--   drop_na() -->
+<!-- tbl1 <- tbl_uvregression( -->
+<!--   landmark_18months, -->
+<!--   method = coxph, -->
+<!--   y = Surv(time = pfs_time_18months, event = pfs_event_18months), -->
+<!--   exponentiate = TRUE, -->
+<!--   add_estimate_to_reference_rows = TRUE, -->
+<!--   include = c("age_at_sample", "tnm_stage_cat", -->
+<!--               "er", "pr", "her2", "cond_pfs18months"), -->
+<!--   # pvalue_fun = label_style_pvalue(digits = 2) -->
+<!--   ) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl2 <- coxph(Surv(time = landmark_18months$pfs_time_18months, -->
+<!--                    event = landmark_18months$pfs_event_18months) ~ age_at_sample + tnm_stage_cat +  -->
+<!--                 er + pr + her2 + cond_pfs18months, -->
+<!--               data = landmark_18months)  %>% -->
+<!--   tbl_regression(exponentiate = TRUE, -->
+<!--                  add_estimate_to_reference_rows = TRUE) %>% -->
+<!--   bold_p(t = .05) %>% -->
+<!--   add_nevent(location = "level") %>% add_n(location = "level") %>% -->
+<!--   bold_labels() %>% italicize_levels() -->
+
+<!-- tbl_merge(list(tbl1, tbl2),  -->
+<!--           tab_spanner = c("**Univariable - each variable HR <br>is non adjusted**",  -->
+<!--                           "**Multivariable - each HR adjusted for <br>variables in table**")) -->
+<!-- ``` -->
+
+
+
+# Time dependent cox analysis
+```{r}
+data_timedep <- data_merge %>% 
+  filter(sample_number %in% c(1:2)) %>% 
+  filter(status_CH == "CH") %>% 
+  mutate(time_tx_to_postsample_months = case_when(
+    sample_number == 1             ~ NA_real_,
+    sample_number == 2             ~ time_tx_to_postsample_months
+  )) %>% 
+  select(deidentified_patient_id, sample_number,
+         time_tx_to_postsample_months,
+         os_time_from_tx_start_months, os_event,
+         tnm_stage_cat,
+         er, pr, her2,
+         age_at_sample, cond
+         ) %>% 
+  group_by(deidentified_patient_id) %>% 
+  fill(time_tx_to_postsample_months, .direction = "updown") %>% 
+  ungroup() %>% 
+  filter(sample_number == 1)
+
+td_dat <- 
+  tmerge(
+    data1 = data_timedep |> 
+      select(deidentified_patient_id, cond, os_event, tnm_stage_cat,
+         er, pr, her2), 
+    data2 = data_timedep |> 
+      select(deidentified_patient_id, os_time_from_tx_start_months, cond, os_event, 
+             time_tx_to_postsample_months, cond), 
+    id = deidentified_patient_id, 
+    os_event = event(os_time_from_tx_start_months, os_event),
+    cond_event = tdc(time_tx_to_postsample_months)
+    ) %>% 
+  mutate(cond = case_when(
+    cond_event == 1           ~ cond,
+    cond_event == 0           ~ "Unknown"
+  )) %>% 
+  select(-cond_event)
+```
+
+## 6 months
+
+
+### Cox result with time-dependent coefficients
+```{r result with time-dependent coefficients, class.source= 'fold-hide'}
+coxph(Surv(tstart,
+           time2 = os_time_from_tx_start_months,
+           event = os_event) ~ age_at_sample:strata(time_range) +
+        tnm_stage_cat + er + pr + her2 +
+        cond_os6months:strata(time_range),
+      data = newdata1) %>%
+  tbl_regression(exponentiate = TRUE) %>%
+  bold_p(t = 0.05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level")
+```
+
+### Cox result adjusting for time varying cavariate
+This model estimates an average hazard over time.
+survivalROC package
+```{r model estimates an average hazard over time, class.source= 'fold-hide'}
+newdata1 <- newdata1 %>% drop_na()
+# newdata %>% 
+#   group_by(time_range) %>% 
+#   summarise_all(~ sum(is.na(.)))
+data_time_cox <- coxph(Surv(tstart,
+                           time2 = os_time_from_tx_start_months,
+                           event = os_event) ~ age_at_sample +
+                        tnm_stage_cat + er + pr + her2 +
+                        cond_os6months,
+                      data = newdata1)
+
+data_time_cox %>%
+  tbl_regression(exponentiate = TRUE) %>%
+  bold_p(t = 0.05) %>%
+  add_nevent(location = "level") %>% add_n(location = "level")
+
+nobs <- NROW(data_time_cox)
+set.seed(123)
+marker_score <- predict(data_time_cox, type = "lp")
+predict_time <- 24
+
+library(survivalROC)
+roc_data_time_cox <- survivalROC(
+  Stime = newdata1$os_time_from_tx_start_months,
+  status = newdata1$os_event,
+  marker = marker_score,
+  predict.time = predict_time,
+  method = "KM"
+)
+
+roc_mds_time <- tibble(id = c(sample(1:151, size = 151, replace = FALSE)),
+                           FP = roc_data_time_cox$FP,
+                           TP = roc_data_time_cox$TP,
+                       cutoff = roc_data_time_cox$cut.values)
+```
+
+## 12 months
+```{r create 12 months time data, class.source= 'fold-hide'}
+newdata <- survSplit(Surv(time = os_time_from_tx_start_months, event = os_event) ~.,
+                     data = data_timedep , cut=c(12),
+                     episode = "time_range",
+                     id= "simple_id") %>%
+  select(deidentified_patient_id, sample_number,
+         time_range,
+         tstart, os_time_from_tx_start_months, os_event,
+         age_at_sample, tnm_stage_cat,
+         er, pr, her2, cond,
+         age_at_first_treatment
+         # pre_age_at_sample, post_age_at_sample,
+         # time_presample_to_postsample_days
+         ) %>%
+  mutate(time_range1 = case_when(
+    time_range == 1         ~ "0-12",
+    time_range == 2         ~ "12-more"
+  )) %>% 
+  filter((sample_number == 1 & time_range == 1) |
+           (sample_number == 2 & time_range == 2))
+```
+
+
+```{r clean 12 months time dep data}
+newdata1 <- newdata %>% 
+  # mutate(age_at_pfs = interval(start = date_of_birth, 
+  #                              end = pfs_date)/
+  #          duration(n = 1, units = "years")) %>% 
+
+  mutate(age_at_months6_cutoff = age_at_first_treatment + (6 / 12)) %>% 
+  mutate(cond_os6months = case_when(
+    time_range == 1                                  ~ "Unknown",
+    age_at_sample < age_at_months6_cutoff            ~ NA_character_,
+    age_at_sample >= age_at_months6_cutoff           ~ cond
+  )) %>% 
+  # select(deidentified_patient_id, os_time_from_tx_start_months, os_time_6months, 
+  #        age_at_first_treatment,age_at_sample, age_at_months6_cutoff,
+  #        cond, cond_os6months,
+  #        sample_treatment_sequence)
+
+  mutate(age_at_months12_cutoff = age_at_first_treatment + (12 / 12)) %>% 
+  mutate(cond_os12months = case_when(
+    time_range == 1                                  ~ "Unknown",
+    age_at_sample < age_at_months12_cutoff          ~ NA_character_,
+    age_at_sample >= age_at_months12_cutoff          ~ cond
+  )) %>% 
+
+  mutate(age_at_months18_cutoff = age_at_first_treatment + (18 / 12)) %>% 
+  mutate(cond_os18months = case_when(
+    time_range == 1                                  ~ "Unknown",
+    age_at_sample < age_at_months18_cutoff          ~ NA_character_,
+    age_at_sample >= age_at_months18_cutoff          ~ cond
+  ))
+```
+

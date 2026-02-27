@@ -38,7 +38,7 @@ theme_set(theme_classic())
 ```{r load}
 data <- 
   readxl::read_xlsx(paste0(here::here(), 
-                           "/sample_status.xlsx"))
+                           "/sample_status_20250613.xlsx"))
 sequenced_patient_data <- read_rds(paste0(
   here::here(),
   "/processed data",
